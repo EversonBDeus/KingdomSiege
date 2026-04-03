@@ -135,6 +135,13 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return player != null && ownerUuid != null && ownerUuid.equals(player.getUUID());
 	}
 
+	public boolean hasSameOwner(CastleSoldierEntity other) {
+		return other != null
+				&& ownerUuid != null
+				&& other.getOwnerUuid() != null
+				&& ownerUuid.equals(other.getOwnerUuid());
+	}
+
 	public Player getOwnerPlayer() {
 		if (ownerUuid == null) {
 			return null;
@@ -193,24 +200,109 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	}
 
 	@Override
+	public void tick() {
+		super.tick();
+
+		if (!level().isClientSide()) {
+			validateCurrentTarget();
+		}
+	}
+
+	@Override
 	public boolean hurtServer(ServerLevel serverLevel, DamageSource damageSource, float amount) {
-		if (isOwnerDamage(damageSource)) {
+		if (isFriendlyDamageSource(damageSource)) {
 			return false;
 		}
 
 		return super.hurtServer(serverLevel, damageSource, amount);
 	}
 
-	private boolean isOwnerDamage(DamageSource damageSource) {
+	private boolean isFriendlyDamageSource(DamageSource damageSource) {
 		if (damageSource == null) {
 			return false;
 		}
 
-		if (!(damageSource.getEntity() instanceof Player player)) {
+		if (damageSource.getEntity() instanceof Player player && isOwnedBy(player)) {
+			return true;
+		}
+
+		if (damageSource.getEntity() instanceof CastleSoldierEntity otherSoldier && hasSameOwner(otherSoldier)) {
+			return true;
+		}
+
+		return false;
+	}
+
+	private void validateCurrentTarget() {
+		LivingEntity currentTarget = getTarget();
+
+		if (currentTarget == null) {
+			return;
+		}
+
+		if (!isValidCombatTarget(currentTarget)) {
+			clearCurrentTarget();
+			return;
+		}
+
+		if (shouldDisengageFromTarget(currentTarget)) {
+			clearCurrentTarget();
+		}
+	}
+
+	private boolean shouldDisengageFromTarget(LivingEntity target) {
+		if (!isFollowMode()) {
 			return false;
 		}
 
-		return isOwnedBy(player);
+		Player owner = getOwnerPlayer();
+
+		if (owner == null || !owner.isAlive() || owner.isSpectator()) {
+			return true;
+		}
+
+		if (distanceToSqr(owner) > FOLLOW_REJOIN_DISTANCE_SQR) {
+			return true;
+		}
+
+		return target.distanceToSqr(owner) > OWNER_PROTECT_RANGE_SQR;
+	}
+
+	private void clearCurrentTarget() {
+		setTarget(null);
+		getNavigation().stop();
+	}
+
+	private boolean isValidCombatTarget(LivingEntity target) {
+		if (target == null || !target.isAlive()) {
+			return false;
+		}
+
+		if (isFriendlyEntity(target)) {
+			return false;
+		}
+
+		return target instanceof Monster;
+	}
+
+	private boolean isFriendlyEntity(LivingEntity entity) {
+		if (entity == null) {
+			return false;
+		}
+
+		if (entity == this) {
+			return true;
+		}
+
+		if (entity instanceof Player player) {
+			return isOwnedBy(player);
+		}
+
+		if (entity instanceof CastleSoldierEntity otherSoldier) {
+			return hasSameOwner(otherSoldier);
+		}
+
+		return false;
 	}
 
 	@Override
@@ -252,7 +344,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	@Override
 	public void performRangedAttack(LivingEntity target, float velocity) {
-		if (target == null || !target.isAlive()) {
+		if (!isValidCombatTarget(target)) {
 			return;
 		}
 
@@ -303,7 +395,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				return false;
 			}
 
-			if (!isValidAttacker(attacker, owner)) {
+			if (!soldier.isValidCombatTarget(attacker)) {
 				return false;
 			}
 
@@ -332,18 +424,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		public void stop() {
 			ownerAttacker = null;
 			super.stop();
-		}
-
-		private boolean isValidAttacker(LivingEntity attacker, Player owner) {
-			if (attacker == null || !attacker.isAlive()) {
-				return false;
-			}
-
-			if (attacker == soldier || attacker == owner) {
-				return false;
-			}
-
-			return attacker instanceof Monster;
 		}
 	}
 
@@ -377,7 +457,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				return false;
 			}
 
-			if (!isValidTarget(target, owner)) {
+			if (!soldier.isValidCombatTarget(target)) {
 				return false;
 			}
 
@@ -406,18 +486,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		public void stop() {
 			ownerTarget = null;
 			super.stop();
-		}
-
-		private boolean isValidTarget(LivingEntity target, Player owner) {
-			if (target == null || !target.isAlive()) {
-				return false;
-			}
-
-			if (target == soldier || target == owner) {
-				return false;
-			}
-
-			return target instanceof Monster;
 		}
 	}
 
@@ -519,7 +587,9 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		public void tick() {
 			LivingEntity target = soldier.getTarget();
 
-			if (target == null) {
+			if (!soldier.isValidCombatTarget(target)) {
+				soldier.setTarget(null);
+				soldier.getNavigation().stop();
 				return;
 			}
 
