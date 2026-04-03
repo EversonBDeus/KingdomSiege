@@ -132,6 +132,11 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	public boolean hasOwner() {
 		return ownerUuid != null;
 	}
+	public boolean hasSameOwner(CastleSoldierEntity other) {
+		return other != null
+				&& ownerUuid != null
+				&& ownerUuid.equals(other.ownerUuid);
+	}
 
 	public boolean isOwnedBy(Player player) {
 		return player != null && ownerUuid != null && ownerUuid.equals(player.getUUID());
@@ -177,7 +182,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	}
 	@Override
 	public boolean hurtServer(ServerLevel serverLevel, DamageSource damageSource, float amount) {
-		if (isOwnerDamage(damageSource)) {
+		if (isOwnerDamage(damageSource) || isFriendlySoldierDamage(damageSource)) {
 			return false;
 		}
 
@@ -194,6 +199,31 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 
 		return isOwnedBy(player);
+	}
+
+	private boolean isFriendlySoldierDamage(DamageSource damageSource) {
+		CastleSoldierEntity attacker = getFriendlySoldierAttacker(damageSource);
+
+		return attacker != null
+				&& attacker != this
+				&& hasSameOwner(attacker);
+	}
+
+	private CastleSoldierEntity getFriendlySoldierAttacker(DamageSource damageSource) {
+		if (damageSource == null) {
+			return null;
+		}
+
+		if (damageSource.getEntity() instanceof CastleSoldierEntity soldierAttacker) {
+			return soldierAttacker;
+		}
+
+		if (damageSource.getDirectEntity() instanceof Arrow arrow
+				&& arrow.getOwner() instanceof CastleSoldierEntity soldierAttacker) {
+			return soldierAttacker;
+		}
+
+		return null;
 	}
 
 	@Override
