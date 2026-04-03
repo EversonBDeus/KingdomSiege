@@ -2,9 +2,13 @@ package com.eversonbdeus.kingdomsiege.entity;
 
 import com.eversonbdeus.kingdomsiege.registry.ModEntities;
 import com.eversonbdeus.kingdomsiege.soldier.SoldierClass;
+import com.eversonbdeus.kingdomsiege.soldier.SoldierMode;
 import net.minecraft.core.UUIDUtil;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.PathfinderMob;
@@ -46,7 +50,11 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final double OWNER_PROTECT_RANGE = 16.0D;
 	private static final double OWNER_PROTECT_RANGE_SQR = OWNER_PROTECT_RANGE * OWNER_PROTECT_RANGE;
 
+	private static final double FOLLOW_START_DISTANCE = 5.0D;
+	private static final double FOLLOW_STOP_DISTANCE = 2.5D;
+
 	private SoldierClass soldierClass = SoldierClass.SWORDSMAN;
+	private SoldierMode soldierMode = SoldierMode.GUARD;
 	private UUID ownerUuid;
 
 	public CastleSoldierEntity(Level level) {
@@ -74,12 +82,32 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		this.soldierClass = soldierClass != null ? soldierClass : SoldierClass.SWORDSMAN;
 	}
 
+	public SoldierMode getSoldierMode() {
+		return soldierMode;
+	}
+
+	public void setSoldierMode(SoldierMode soldierMode) {
+		this.soldierMode = soldierMode != null ? soldierMode : SoldierMode.GUARD;
+	}
+
+	public void toggleSoldierMode() {
+		setSoldierMode(getSoldierMode().next());
+	}
+
 	public boolean isSwordsman() {
 		return soldierClass == SoldierClass.SWORDSMAN;
 	}
 
 	public boolean isArcher() {
 		return soldierClass == SoldierClass.ARCHER;
+	}
+
+	public boolean isGuardMode() {
+		return soldierMode == SoldierMode.GUARD;
+	}
+
+	public boolean isFollowMode() {
+		return soldierMode == SoldierMode.FOLLOW;
 	}
 
 	public UUID getOwnerUuid() {
@@ -121,15 +149,14 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		goalSelector.addGoal(0, new FloatGoal(this));
 		goalSelector.addGoal(1, new SwordsmanMeleeAttackGoal(this, SWORDSMAN_MELEE_SPEED, true));
 		goalSelector.addGoal(1, new ArcherRangedAttackGoal(this, ARCHER_MOVE_SPEED, ARCHER_ATTACK_RANGE));
-		goalSelector.addGoal(2, new RandomStrollGoal(this, 1.0D));
-		goalSelector.addGoal(3, new LookAtPlayerGoal(this, Player.class, 8.0F));
-		goalSelector.addGoal(4, new RandomLookAroundGoal(this));
+		goalSelector.addGoal(3, new GuardModeRandomStrollGoal(this, 1.0D));
+		goalSelector.addGoal(4, new LookAtPlayerGoal(this, Player.class, 8.0F));
+		goalSelector.addGoal(5, new RandomLookAroundGoal(this));
 
 		targetSelector.addGoal(0, new ProtectOwnerWhenHurtGoal(this));
 		targetSelector.addGoal(1, new SwordsmanNearestHostileTargetGoal(this));
 		targetSelector.addGoal(1, new ArcherNearestHostileTargetGoal(this));
 	}
-
 	@Override
 	public boolean removeWhenFarAway(double distanceToClosestPlayer) {
 		return false;
@@ -139,6 +166,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	protected void addAdditionalSaveData(ValueOutput valueOutput) {
 		super.addAdditionalSaveData(valueOutput);
 		valueOutput.store("SoldierClass", SoldierClass.CODEC, soldierClass);
+		valueOutput.store("SoldierMode", SoldierMode.CODEC, soldierMode);
 		valueOutput.storeNullable("OwnerUuid", UUIDUtil.STRING_CODEC, ownerUuid);
 	}
 
@@ -146,9 +174,67 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	protected void readAdditionalSaveData(ValueInput valueInput) {
 		super.readAdditionalSaveData(valueInput);
 		setSoldierClass(valueInput.read("SoldierClass", SoldierClass.CODEC).orElse(SoldierClass.SWORDSMAN));
+		setSoldierMode(valueInput.read("SoldierMode", SoldierMode.CODEC).orElse(SoldierMode.GUARD));
 		setOwnerUuid(valueInput.read("OwnerUuid", UUIDUtil.STRING_CODEC).orElse(null));
 	}
 
+	@Override
+	public void tick() {
+		super.tick();
+
+		if (!level().isClientSide()) {
+			tickFollowOwner();
+		}
+	}
+
+	private void tickFollowOwner() {
+		if (!isFollowMode()) {
+			return;
+		}
+
+		if (getTarget() != null) {
+			return;
+		}
+
+		Player owner = getOwnerPlayer();
+
+		if (owner == null || !owner.isAlive() || owner.isSpectator()) {
+			getNavigation().stop();
+			return;
+		}
+
+		double distanceToOwnerSqr = distanceToSqr(owner);
+		double followStartDistanceSqr = FOLLOW_START_DISTANCE * FOLLOW_START_DISTANCE;
+		double followStopDistanceSqr = FOLLOW_STOP_DISTANCE * FOLLOW_STOP_DISTANCE;
+
+		if (distanceToOwnerSqr > followStartDistanceSqr) {
+			getLookControl().setLookAt(owner, 30.0F, 30.0F);
+			getNavigation().moveTo(owner, 1.15D);
+		} else if (distanceToOwnerSqr <= followStopDistanceSqr) {
+			getNavigation().stop();
+		}
+	}
+
+	@Override
+	protected InteractionResult mobInteract(Player player, InteractionHand hand) {
+		if (hand != InteractionHand.MAIN_HAND) {
+			return InteractionResult.PASS;
+		}
+
+		if (!isOwnedBy(player) || !player.isShiftKeyDown()) {
+			return super.mobInteract(player, hand);
+		}
+
+		if (!level().isClientSide()) {
+			toggleSoldierMode();
+			getNavigation().stop();
+
+			String modeName = isFollowMode() ? "SEGUIR" : "GUARDAR";
+			player.sendSystemMessage(Component.literal("Modo do soldado: " + modeName));
+		}
+
+		return InteractionResult.SUCCESS;
+	}
 	@Override
 	public void performRangedAttack(LivingEntity target, float velocity) {
 		if (target == null || !target.isAlive()) {
@@ -366,6 +452,98 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			if (hasLineOfSight && distanceToTargetSqr <= attackRangeSqr && attackCooldown <= 0) {
 				soldier.performRangedAttack(target, ARCHER_PROJECTILE_VELOCITY);
 				attackCooldown = ARCHER_ATTACK_INTERVAL_TICKS;
+			}
+		}
+	}
+
+	private static final class GuardModeRandomStrollGoal extends RandomStrollGoal {
+		private final CastleSoldierEntity soldier;
+
+		private GuardModeRandomStrollGoal(CastleSoldierEntity soldier, double speedModifier) {
+			super(soldier, speedModifier);
+			this.soldier = soldier;
+		}
+
+		@Override
+		public boolean canUse() {
+			return soldier.isGuardMode() && super.canUse();
+		}
+
+		@Override
+		public boolean canContinueToUse() {
+			return soldier.isGuardMode() && super.canContinueToUse();
+		}
+	}
+
+	private static final class FollowOwnerGoal extends Goal {
+		private final CastleSoldierEntity soldier;
+		private final double speedModifier;
+		private final double startDistanceSqr;
+		private final double stopDistanceSqr;
+		private int timeToRecalculatePath;
+
+		private FollowOwnerGoal(CastleSoldierEntity soldier, double speedModifier, double startDistance, double stopDistance) {
+			this.soldier = soldier;
+			this.speedModifier = speedModifier;
+			this.startDistanceSqr = startDistance * startDistance;
+			this.stopDistanceSqr = stopDistance * stopDistance;
+			this.timeToRecalculatePath = 0;
+			setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK));
+		}
+
+		@Override
+		public boolean canUse() {
+			Player owner = soldier.getOwnerPlayer();
+
+			if (!soldier.isFollowMode() || owner == null || !owner.isAlive() || owner.isSpectator()) {
+				return false;
+			}
+
+			if (soldier.getTarget() != null) {
+				return false;
+			}
+
+			return soldier.distanceToSqr(owner) > startDistanceSqr;
+		}
+
+		@Override
+		public boolean canContinueToUse() {
+			Player owner = soldier.getOwnerPlayer();
+
+			if (!soldier.isFollowMode() || owner == null || !owner.isAlive() || owner.isSpectator()) {
+				return false;
+			}
+
+			if (soldier.getTarget() != null) {
+				return false;
+			}
+
+			return soldier.distanceToSqr(owner) > stopDistanceSqr;
+		}
+
+		@Override
+		public void start() {
+			timeToRecalculatePath = 0;
+		}
+
+		@Override
+		public void stop() {
+			soldier.getNavigation().stop();
+		}
+
+		@Override
+		public void tick() {
+			Player owner = soldier.getOwnerPlayer();
+
+			if (owner == null) {
+				return;
+			}
+
+			soldier.getLookControl().setLookAt(owner, 30.0F, 30.0F);
+
+			if (--timeToRecalculatePath <= 0) {
+				timeToRecalculatePath = 10;
+				soldier.getNavigation().moveTo(owner, speedModifier);
 			}
 		}
 	}
