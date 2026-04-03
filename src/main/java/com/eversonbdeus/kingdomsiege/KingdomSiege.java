@@ -1,5 +1,6 @@
 package com.eversonbdeus.kingdomsiege;
 
+import com.eversonbdeus.kingdomsiege.component.ModComponents;
 import com.eversonbdeus.kingdomsiege.registry.ModEntities;
 import com.eversonbdeus.kingdomsiege.registry.ModItems;
 import net.fabricmc.api.ModInitializer;
@@ -14,6 +15,7 @@ public class KingdomSiege implements ModInitializer {
 	@Override
 	public void onInitialize() {
 		LOGGER.info("Inicializando {}.", MOD_NAME);
+		ModComponents.register();
 		ModEntities.register();
 		ModItems.register();
 	}
