@@ -1,6 +1,7 @@
 package com.eversonbdeus.kingdomsiege.entity;
 
 import com.eversonbdeus.kingdomsiege.registry.ModEntities;
+import com.eversonbdeus.kingdomsiege.soldier.SoldierClass;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
@@ -11,8 +12,12 @@ import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.ai.goal.RandomStrollGoal;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 
 public class CastleSoldierEntity extends PathfinderMob {
+	private SoldierClass soldierClass = SoldierClass.SWORDSMAN;
+
 	public CastleSoldierEntity(Level level) {
 		this(ModEntities.CASTLE_SOLDIER, level);
 	}
@@ -30,6 +35,14 @@ public class CastleSoldierEntity extends PathfinderMob {
 				.add(Attributes.FOLLOW_RANGE, 16.0D);
 	}
 
+	public SoldierClass getSoldierClass() {
+		return soldierClass;
+	}
+
+	public void setSoldierClass(SoldierClass soldierClass) {
+		this.soldierClass = soldierClass != null ? soldierClass : SoldierClass.SWORDSMAN;
+	}
+
 	@Override
 	protected void registerGoals() {
 		goalSelector.addGoal(0, new FloatGoal(this));
@@ -41,5 +54,17 @@ public class CastleSoldierEntity extends PathfinderMob {
 	@Override
 	public boolean removeWhenFarAway(double distanceToClosestPlayer) {
 		return false;
+	}
+
+	@Override
+	protected void addAdditionalSaveData(ValueOutput valueOutput) {
+		super.addAdditionalSaveData(valueOutput);
+		valueOutput.store("SoldierClass", SoldierClass.CODEC, soldierClass);
+	}
+
+	@Override
+	protected void readAdditionalSaveData(ValueInput valueInput) {
+		super.readAdditionalSaveData(valueInput);
+		setSoldierClass(valueInput.read("SoldierClass", SoldierClass.CODEC).orElse(SoldierClass.SWORDSMAN));
 	}
 }

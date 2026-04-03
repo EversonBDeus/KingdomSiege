@@ -1,11 +1,20 @@
 package com.eversonbdeus.kingdomsiege.item;
 
+import com.eversonbdeus.kingdomsiege.entity.CastleSoldierEntity;
 import com.eversonbdeus.kingdomsiege.registry.ModComponents;
+import com.eversonbdeus.kingdomsiege.registry.ModEntities;
 import com.eversonbdeus.kingdomsiege.soldier.SoldierClass;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.SpawnEggItem;
+import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.level.Level;
 
 public class SoldierSpawnEggItem extends SpawnEggItem {
 	private final SoldierClass defaultSoldierClass;
@@ -33,5 +42,40 @@ public class SoldierSpawnEggItem extends SpawnEggItem {
 				.append(Component.literal(" ("))
 				.append(Component.translatable(soldierClass.getTranslationKey()))
 				.append(Component.literal(")"));
+	}
+
+	@Override
+	public InteractionResult useOn(UseOnContext context) {
+		Level level = context.getLevel();
+
+		if (level.isClientSide()) {
+			return InteractionResult.SUCCESS;
+		}
+
+		if (!(level instanceof ServerLevel serverLevel)) {
+			return InteractionResult.PASS;
+		}
+
+		ItemStack stack = context.getItemInHand();
+		BlockPos clickedPos = context.getClickedPos();
+		Direction clickedFace = context.getClickedFace();
+		BlockPos spawnPos = clickedPos.relative(clickedFace);
+
+		CastleSoldierEntity soldier = ModEntities.CASTLE_SOLDIER.spawn(
+				serverLevel,
+				stack,
+				context.getPlayer(),
+				spawnPos,
+				EntitySpawnReason.SPAWN_ITEM_USE,
+				true,
+				clickedFace == Direction.UP
+		);
+
+		if (soldier == null) {
+			return InteractionResult.PASS;
+		}
+
+		soldier.setSoldierClass(getSoldierClass(stack));
+		return InteractionResult.SUCCESS;
 	}
 }
