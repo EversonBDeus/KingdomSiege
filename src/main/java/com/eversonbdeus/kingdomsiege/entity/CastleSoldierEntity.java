@@ -132,6 +132,24 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	public boolean hasOwner() {
 		return ownerUuid != null;
 	}
+
+	public boolean canAutoAcquireHostileTarget() {
+		if (isGuardMode()) {
+			return true;
+		}
+
+		if (!isFollowMode()) {
+			return false;
+		}
+
+		Player owner = getOwnerPlayer();
+
+		if (owner == null || !owner.isAlive()) {
+			return false;
+		}
+
+		return distanceToSqr(owner) <= OWNER_PROTECT_RANGE_SQR;
+	}
 	public boolean hasSameOwner(CastleSoldierEntity other) {
 		return other != null
 				&& ownerUuid != null
@@ -463,12 +481,12 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		@Override
 		public boolean canUse() {
-			return soldier.isSwordsman() && super.canUse();
+			return soldier.isSwordsman() && soldier.canAutoAcquireHostileTarget() && super.canUse();
 		}
 
 		@Override
 		public boolean canContinueToUse() {
-			return soldier.isSwordsman() && super.canContinueToUse();
+			return soldier.isSwordsman() && soldier.canAutoAcquireHostileTarget() && super.canContinueToUse();
 		}
 	}
 
@@ -482,12 +500,12 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		@Override
 		public boolean canUse() {
-			return soldier.isArcher() && super.canUse();
+			return soldier.isArcher() && soldier.canAutoAcquireHostileTarget() && super.canUse();
 		}
 
 		@Override
 		public boolean canContinueToUse() {
-			return soldier.isArcher() && super.canContinueToUse();
+			return soldier.isArcher() && soldier.canAutoAcquireHostileTarget() && super.canContinueToUse();
 		}
 	}
 
