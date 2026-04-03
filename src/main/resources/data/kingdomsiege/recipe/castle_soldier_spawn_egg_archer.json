@@ -1,0 +1,15 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    "kingdomsiege:castle_soldier_spawn_egg",
+    "minecraft:arrow"
+  ],
+  "result": {
+    "id": "kingdomsiege:castle_soldier_spawn_egg",
+    "count": 1,
+    "components": {
+      "kingdomsiege:soldier_class": "archer"
+    }
+  }
+}
