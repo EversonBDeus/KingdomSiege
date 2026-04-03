@@ -3,6 +3,7 @@ package com.eversonbdeus.kingdomsiege.entity;
 import com.eversonbdeus.kingdomsiege.registry.ModEntities;
 import com.eversonbdeus.kingdomsiege.soldier.SoldierClass;
 import net.minecraft.core.UUIDUtil;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
@@ -41,6 +42,9 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final int ARCHER_ATTACK_INTERVAL_TICKS = 30;
 	private static final float ARCHER_PROJECTILE_VELOCITY = 1.6F;
 	private static final double ARCHER_ARROW_DAMAGE = 2.5D;
+
+	private static final double OWNER_PROTECT_RANGE = 16.0D;
+	private static final double OWNER_PROTECT_RANGE_SQR = OWNER_PROTECT_RANGE * OWNER_PROTECT_RANGE;
 
 	private SoldierClass soldierClass = SoldierClass.SWORDSMAN;
 	private UUID ownerUuid;
@@ -94,6 +98,24 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return player != null && ownerUuid != null && ownerUuid.equals(player.getUUID());
 	}
 
+	public Player getOwnerPlayer() {
+		if (ownerUuid == null) {
+			return null;
+		}
+
+		if (!(level() instanceof ServerLevel serverLevel)) {
+			return null;
+		}
+
+		for (Player player : serverLevel.players()) {
+			if (ownerUuid.equals(player.getUUID())) {
+				return player;
+			}
+		}
+
+		return null;
+	}
+
 	@Override
 	protected void registerGoals() {
 		goalSelector.addGoal(0, new FloatGoal(this));
@@ -103,6 +125,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		goalSelector.addGoal(3, new LookAtPlayerGoal(this, Player.class, 8.0F));
 		goalSelector.addGoal(4, new RandomLookAroundGoal(this));
 
+		targetSelector.addGoal(0, new ProtectOwnerWhenHurtGoal(this));
 		targetSelector.addGoal(1, new SwordsmanNearestHostileTargetGoal(this));
 		targetSelector.addGoal(1, new ArcherNearestHostileTargetGoal(this));
 	}
@@ -147,6 +170,80 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		playSound(SoundEvents.SKELETON_SHOOT, 1.0F, 1.0F / (getRandom().nextFloat() * 0.4F + 0.8F));
 		level().addFreshEntity(arrow);
+	}
+
+	private static final class ProtectOwnerWhenHurtGoal extends Goal {
+		private final CastleSoldierEntity soldier;
+		private LivingEntity ownerAttacker;
+		private int lastOwnerAttackedTime;
+
+		private ProtectOwnerWhenHurtGoal(CastleSoldierEntity soldier) {
+			this.soldier = soldier;
+			this.lastOwnerAttackedTime = 0;
+			setFlags(EnumSet.of(Goal.Flag.TARGET));
+		}
+
+		@Override
+		public boolean canUse() {
+			Player owner = soldier.getOwnerPlayer();
+
+			if (owner == null || !owner.isAlive()) {
+				return false;
+			}
+
+			if (soldier.distanceToSqr(owner) > OWNER_PROTECT_RANGE_SQR) {
+				return false;
+			}
+
+			LivingEntity attacker = owner.getLastHurtByMob();
+			int attackedTime = owner.getLastHurtByMobTimestamp();
+
+			if (attackedTime == lastOwnerAttackedTime) {
+				return false;
+			}
+
+			if (!isValidAttacker(attacker, owner)) {
+				return false;
+			}
+
+			ownerAttacker = attacker;
+			return true;
+		}
+
+		@Override
+		public boolean canContinueToUse() {
+			return false;
+		}
+
+		@Override
+		public void start() {
+			Player owner = soldier.getOwnerPlayer();
+
+			if (owner != null && ownerAttacker != null) {
+				lastOwnerAttackedTime = owner.getLastHurtByMobTimestamp();
+				soldier.setTarget(ownerAttacker);
+			}
+
+			super.start();
+		}
+
+		@Override
+		public void stop() {
+			ownerAttacker = null;
+			super.stop();
+		}
+
+		private boolean isValidAttacker(LivingEntity attacker, Player owner) {
+			if (attacker == null || !attacker.isAlive()) {
+				return false;
+			}
+
+			if (attacker == soldier || attacker == owner) {
+				return false;
+			}
+
+			return attacker instanceof Monster;
+		}
 	}
 
 	private static final class SwordsmanMeleeAttackGoal extends MeleeAttackGoal {
