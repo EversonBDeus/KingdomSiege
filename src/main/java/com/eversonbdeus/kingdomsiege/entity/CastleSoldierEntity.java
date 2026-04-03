@@ -2,9 +2,13 @@ package com.eversonbdeus.kingdomsiege.entity;
 
 import com.eversonbdeus.kingdomsiege.registry.ModEntities;
 import com.eversonbdeus.kingdomsiege.soldier.SoldierClass;
+import net.minecraft.core.UUIDUtil;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
@@ -12,20 +16,18 @@ import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.ai.goal.RandomStrollGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
-import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
-import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.RangedAttackMob;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.arrow.Arrow;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 
 import java.util.EnumSet;
+import java.util.UUID;
 
 public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMob {
 	private static final double BASE_MOVEMENT_SPEED = 0.28D;
@@ -41,6 +43,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final double ARCHER_ARROW_DAMAGE = 2.5D;
 
 	private SoldierClass soldierClass = SoldierClass.SWORDSMAN;
+	private UUID ownerUuid;
 
 	public CastleSoldierEntity(Level level) {
 		this(ModEntities.CASTLE_SOLDIER, level);
@@ -75,6 +78,22 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return soldierClass == SoldierClass.ARCHER;
 	}
 
+	public UUID getOwnerUuid() {
+		return ownerUuid;
+	}
+
+	public void setOwnerUuid(UUID ownerUuid) {
+		this.ownerUuid = ownerUuid;
+	}
+
+	public boolean hasOwner() {
+		return ownerUuid != null;
+	}
+
+	public boolean isOwnedBy(Player player) {
+		return player != null && ownerUuid != null && ownerUuid.equals(player.getUUID());
+	}
+
 	@Override
 	protected void registerGoals() {
 		goalSelector.addGoal(0, new FloatGoal(this));
@@ -97,14 +116,15 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	protected void addAdditionalSaveData(ValueOutput valueOutput) {
 		super.addAdditionalSaveData(valueOutput);
 		valueOutput.store("SoldierClass", SoldierClass.CODEC, soldierClass);
+		valueOutput.storeNullable("OwnerUuid", UUIDUtil.STRING_CODEC, ownerUuid);
 	}
 
 	@Override
 	protected void readAdditionalSaveData(ValueInput valueInput) {
 		super.readAdditionalSaveData(valueInput);
 		setSoldierClass(valueInput.read("SoldierClass", SoldierClass.CODEC).orElse(SoldierClass.SWORDSMAN));
+		setOwnerUuid(valueInput.read("OwnerUuid", UUIDUtil.STRING_CODEC).orElse(null));
 	}
-
 
 	@Override
 	public void performRangedAttack(LivingEntity target, float velocity) {

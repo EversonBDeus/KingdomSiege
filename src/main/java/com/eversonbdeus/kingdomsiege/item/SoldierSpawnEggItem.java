@@ -10,6 +10,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.SpawnEggItem;
@@ -60,11 +61,12 @@ public class SoldierSpawnEggItem extends SpawnEggItem {
 		BlockPos clickedPos = context.getClickedPos();
 		Direction clickedFace = context.getClickedFace();
 		BlockPos spawnPos = clickedPos.relative(clickedFace);
+		Player player = context.getPlayer();
 
 		CastleSoldierEntity soldier = ModEntities.CASTLE_SOLDIER.spawn(
 				serverLevel,
 				stack,
-				context.getPlayer(),
+				player,
 				spawnPos,
 				EntitySpawnReason.SPAWN_ITEM_USE,
 				true,
@@ -76,6 +78,11 @@ public class SoldierSpawnEggItem extends SpawnEggItem {
 		}
 
 		soldier.setSoldierClass(getSoldierClass(stack));
+
+		if (player != null) {
+			soldier.setOwnerUuid(player.getUUID());
+		}
+
 		return InteractionResult.SUCCESS;
 	}
 }
