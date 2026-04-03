@@ -1,6 +1,6 @@
 {
 	"schemaVersion": 1,
-	"id": "kingdom-siege",
+	"id": "kingdomsiege",
 	"version": "${version}",
 	"name": "Kingdom Siege",
 	"description": "Mod de castelos, soldados e facções para Minecraft Fabric.",
@@ -9,7 +9,7 @@
 	],
 	"contact": {},
 	"license": "MIT",
-	"icon": "assets/kingdom-siege/icon.png",
+	"icon": "assets/kingdomsiege/icon.png",
 	"environment": "*",
 	"entrypoints": {
 		"main": [
@@ -23,7 +23,7 @@
 		]
 	},
 	"depends": {
-		"fabricloader": ">=0.18.4",
+		"fabricloader": ">=0.18.6",
 		"minecraft": "~26.1",
 		"java": ">=25",
 		"fabric-api": "*"
