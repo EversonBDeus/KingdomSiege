@@ -52,6 +52,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	private static final double FOLLOW_START_DISTANCE = 5.0D;
 	private static final double FOLLOW_STOP_DISTANCE = 2.5D;
+	private static final double FOLLOW_MOVE_SPEED = 1.15D;
 
 	private SoldierClass soldierClass = SoldierClass.SWORDSMAN;
 	private SoldierMode soldierMode = SoldierMode.GUARD;
@@ -87,7 +88,12 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	}
 
 	public void setSoldierMode(SoldierMode soldierMode) {
-		this.soldierMode = soldierMode != null ? soldierMode : SoldierMode.GUARD;
+		SoldierMode resolvedMode = soldierMode != null ? soldierMode : SoldierMode.GUARD;
+		this.soldierMode = resolvedMode;
+
+		if (resolvedMode == SoldierMode.GUARD && getTarget() == null) {
+			getNavigation().stop();
+		}
 	}
 
 	public void toggleSoldierMode() {
@@ -149,6 +155,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		goalSelector.addGoal(0, new FloatGoal(this));
 		goalSelector.addGoal(1, new SwordsmanMeleeAttackGoal(this, SWORDSMAN_MELEE_SPEED, true));
 		goalSelector.addGoal(1, new ArcherRangedAttackGoal(this, ARCHER_MOVE_SPEED, ARCHER_ATTACK_RANGE));
+		goalSelector.addGoal(2, new FollowOwnerGoal(this, FOLLOW_MOVE_SPEED, FOLLOW_START_DISTANCE, FOLLOW_STOP_DISTANCE));
 		goalSelector.addGoal(3, new GuardModeRandomStrollGoal(this, 1.0D));
 		goalSelector.addGoal(4, new LookAtPlayerGoal(this, Player.class, 8.0F));
 		goalSelector.addGoal(5, new RandomLookAroundGoal(this));
@@ -157,6 +164,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		targetSelector.addGoal(1, new SwordsmanNearestHostileTargetGoal(this));
 		targetSelector.addGoal(1, new ArcherNearestHostileTargetGoal(this));
 	}
+
 	@Override
 	public boolean removeWhenFarAway(double distanceToClosestPlayer) {
 		return false;
@@ -179,43 +187,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	}
 
 	@Override
-	public void tick() {
-		super.tick();
-
-		if (!level().isClientSide()) {
-			tickFollowOwner();
-		}
-	}
-
-	private void tickFollowOwner() {
-		if (!isFollowMode()) {
-			return;
-		}
-
-		if (getTarget() != null) {
-			return;
-		}
-
-		Player owner = getOwnerPlayer();
-
-		if (owner == null || !owner.isAlive() || owner.isSpectator()) {
-			getNavigation().stop();
-			return;
-		}
-
-		double distanceToOwnerSqr = distanceToSqr(owner);
-		double followStartDistanceSqr = FOLLOW_START_DISTANCE * FOLLOW_START_DISTANCE;
-		double followStopDistanceSqr = FOLLOW_STOP_DISTANCE * FOLLOW_STOP_DISTANCE;
-
-		if (distanceToOwnerSqr > followStartDistanceSqr) {
-			getLookControl().setLookAt(owner, 30.0F, 30.0F);
-			getNavigation().moveTo(owner, 1.15D);
-		} else if (distanceToOwnerSqr <= followStopDistanceSqr) {
-			getNavigation().stop();
-		}
-	}
-
-	@Override
 	protected InteractionResult mobInteract(Player player, InteractionHand hand) {
 		if (hand != InteractionHand.MAIN_HAND) {
 			return InteractionResult.PASS;
@@ -235,6 +206,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		return InteractionResult.SUCCESS;
 	}
+
 	@Override
 	public void performRangedAttack(LivingEntity target, float velocity) {
 		if (target == null || !target.isAlive()) {
