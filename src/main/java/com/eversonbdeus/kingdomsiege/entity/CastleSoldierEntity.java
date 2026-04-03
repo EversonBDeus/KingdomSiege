@@ -6,10 +6,10 @@ import com.eversonbdeus.kingdomsiege.soldier.SoldierMode;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.PathfinderMob;
@@ -94,11 +94,9 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		SoldierMode resolvedMode = soldierMode != null ? soldierMode : SoldierMode.GUARD;
 		this.soldierMode = resolvedMode;
 
-		if (getTarget() != null) {
-			setTarget(null);
+		if (resolvedMode == SoldierMode.GUARD && getTarget() == null) {
+			getNavigation().stop();
 		}
-
-		getNavigation().stop();
 	}
 
 	public void toggleSoldierMode() {
@@ -133,29 +131,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return ownerUuid != null;
 	}
 
-	public boolean canAutoAcquireHostileTarget() {
-		if (isGuardMode()) {
-			return true;
-		}
-
-		if (!isFollowMode()) {
-			return false;
-		}
-
-		Player owner = getOwnerPlayer();
-
-		if (owner == null || !owner.isAlive()) {
-			return false;
-		}
-
-		return distanceToSqr(owner) <= OWNER_PROTECT_RANGE_SQR;
-	}
-	public boolean hasSameOwner(CastleSoldierEntity other) {
-		return other != null
-				&& ownerUuid != null
-				&& ownerUuid.equals(other.ownerUuid);
-	}
-
 	public boolean isOwnedBy(Player player) {
 		return player != null && ownerUuid != null && ownerUuid.equals(player.getUUID());
 	}
@@ -178,6 +153,24 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return null;
 	}
 
+	public boolean canAutoAcquireHostileTarget() {
+		if (isGuardMode()) {
+			return true;
+		}
+
+		if (!isFollowMode()) {
+			return false;
+		}
+
+		Player owner = getOwnerPlayer();
+
+		if (owner == null || !owner.isAlive()) {
+			return false;
+		}
+
+		return distanceToSqr(owner) <= OWNER_PROTECT_RANGE_SQR;
+	}
+
 	@Override
 	protected void registerGoals() {
 		goalSelector.addGoal(0, new FloatGoal(this));
@@ -198,9 +191,10 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	public boolean removeWhenFarAway(double distanceToClosestPlayer) {
 		return false;
 	}
+
 	@Override
 	public boolean hurtServer(ServerLevel serverLevel, DamageSource damageSource, float amount) {
-		if (isOwnerDamage(damageSource) || isFriendlySoldierDamage(damageSource)) {
+		if (isOwnerDamage(damageSource)) {
 			return false;
 		}
 
@@ -217,31 +211,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 
 		return isOwnedBy(player);
-	}
-
-	private boolean isFriendlySoldierDamage(DamageSource damageSource) {
-		CastleSoldierEntity attacker = getFriendlySoldierAttacker(damageSource);
-
-		return attacker != null
-				&& attacker != this
-				&& hasSameOwner(attacker);
-	}
-
-	private CastleSoldierEntity getFriendlySoldierAttacker(DamageSource damageSource) {
-		if (damageSource == null) {
-			return null;
-		}
-
-		if (damageSource.getEntity() instanceof CastleSoldierEntity soldierAttacker) {
-			return soldierAttacker;
-		}
-
-		if (damageSource.getDirectEntity() instanceof Arrow arrow
-				&& arrow.getOwner() instanceof CastleSoldierEntity soldierAttacker) {
-			return soldierAttacker;
-		}
-
-		return null;
 	}
 
 	@Override
@@ -652,7 +621,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 
 		@Override
-
 		public void tick() {
 			Player owner = soldier.getOwnerPlayer();
 
@@ -674,6 +642,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				soldier.getNavigation().moveTo(owner, speedModifier);
 			}
 		}
+
 		private void rejoinNearOwner(Player owner) {
 			double targetX = owner.getX() - owner.getLookAngle().x * 1.5D;
 			double targetY = owner.getY();
