@@ -53,6 +53,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final double FOLLOW_START_DISTANCE = 5.0D;
 	private static final double FOLLOW_STOP_DISTANCE = 2.5D;
 	private static final double FOLLOW_MOVE_SPEED = 1.15D;
+	private static final double FOLLOW_REJOIN_DISTANCE = 12.0D;
+	private static final double FOLLOW_REJOIN_DISTANCE_SQR = FOLLOW_REJOIN_DISTANCE * FOLLOW_REJOIN_DISTANCE;
 
 	private SoldierClass soldierClass = SoldierClass.SWORDSMAN;
 	private SoldierMode soldierMode = SoldierMode.GUARD;
@@ -579,10 +581,18 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 
 		@Override
+
 		public void tick() {
 			Player owner = soldier.getOwnerPlayer();
 
 			if (owner == null) {
+				return;
+			}
+
+			double distanceToOwnerSqr = soldier.distanceToSqr(owner);
+
+			if (distanceToOwnerSqr >= FOLLOW_REJOIN_DISTANCE_SQR) {
+				rejoinNearOwner(owner);
 				return;
 			}
 
@@ -592,6 +602,17 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				timeToRecalculatePath = 10;
 				soldier.getNavigation().moveTo(owner, speedModifier);
 			}
+		}
+		private void rejoinNearOwner(Player owner) {
+			double targetX = owner.getX() - owner.getLookAngle().x * 1.5D;
+			double targetY = owner.getY();
+			double targetZ = owner.getZ() - owner.getLookAngle().z * 1.5D;
+
+			soldier.getNavigation().stop();
+			soldier.setPos(targetX, targetY, targetZ);
+			soldier.setYRot(owner.getYRot());
+			soldier.setXRot(owner.getXRot());
+			soldier.setDeltaMovement(0.0D, 0.0D, 0.0D);
 		}
 	}
 }
