@@ -1,4 +1,6 @@
 {
   "entity.kingdomsiege.castle_soldier": "Soldado do Castelo",
-  "item.kingdomsiege.castle_soldier_spawn_egg": "Ovo de Spawn do Soldado do Castelo"
+  "item.kingdomsiege.castle_soldier_spawn_egg": "Ovo de Spawn do Soldado do Castelo",
+  "soldier_class.swordsman": "Espadachim",
+  "soldier_class.archer": "Arqueiro"
 }
