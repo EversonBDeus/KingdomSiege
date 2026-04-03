@@ -3,26 +3,42 @@ package com.eversonbdeus.kingdomsiege.entity;
 import com.eversonbdeus.kingdomsiege.registry.ModEntities;
 import com.eversonbdeus.kingdomsiege.soldier.SoldierClass;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.PathfinderMob;
-import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
-import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
+import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.ai.goal.RandomStrollGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
+import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.monster.RangedAttackMob;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.arrow.Arrow;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 
-public class CastleSoldierEntity extends PathfinderMob {
+import java.util.EnumSet;
+
+public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMob {
 	private static final double BASE_MOVEMENT_SPEED = 0.28D;
 	private static final double BASE_ATTACK_DAMAGE = 4.0D;
 	private static final double BASE_FOLLOW_RANGE = 16.0D;
+
 	private static final double SWORDSMAN_MELEE_SPEED = 1.15D;
+
+	private static final double ARCHER_MOVE_SPEED = 1.0D;
+	private static final double ARCHER_ATTACK_RANGE = 12.0D;
+	private static final int ARCHER_ATTACK_INTERVAL_TICKS = 30;
+	private static final float ARCHER_PROJECTILE_VELOCITY = 1.6F;
+	private static final double ARCHER_ARROW_DAMAGE = 2.5D;
 
 	private SoldierClass soldierClass = SoldierClass.SWORDSMAN;
 
@@ -55,15 +71,21 @@ public class CastleSoldierEntity extends PathfinderMob {
 		return soldierClass == SoldierClass.SWORDSMAN;
 	}
 
+	public boolean isArcher() {
+		return soldierClass == SoldierClass.ARCHER;
+	}
+
 	@Override
 	protected void registerGoals() {
 		goalSelector.addGoal(0, new FloatGoal(this));
 		goalSelector.addGoal(1, new SwordsmanMeleeAttackGoal(this, SWORDSMAN_MELEE_SPEED, true));
+		goalSelector.addGoal(1, new ArcherRangedAttackGoal(this, ARCHER_MOVE_SPEED, ARCHER_ATTACK_RANGE));
 		goalSelector.addGoal(2, new RandomStrollGoal(this, 1.0D));
 		goalSelector.addGoal(3, new LookAtPlayerGoal(this, Player.class, 8.0F));
 		goalSelector.addGoal(4, new RandomLookAroundGoal(this));
 
 		targetSelector.addGoal(1, new SwordsmanNearestHostileTargetGoal(this));
+		targetSelector.addGoal(1, new ArcherNearestHostileTargetGoal(this));
 	}
 
 	@Override
@@ -81,6 +103,30 @@ public class CastleSoldierEntity extends PathfinderMob {
 	protected void readAdditionalSaveData(ValueInput valueInput) {
 		super.readAdditionalSaveData(valueInput);
 		setSoldierClass(valueInput.read("SoldierClass", SoldierClass.CODEC).orElse(SoldierClass.SWORDSMAN));
+	}
+
+
+	@Override
+	public void performRangedAttack(LivingEntity target, float velocity) {
+		if (target == null || !target.isAlive()) {
+			return;
+		}
+
+		ItemStack arrowStack = new ItemStack(Items.ARROW);
+		ItemStack weaponStack = new ItemStack(Items.BOW);
+
+		Arrow arrow = new Arrow(level(), this, arrowStack, weaponStack);
+
+		double deltaX = target.getX() - getX();
+		double deltaY = target.getEyeY() - arrow.getY();
+		double deltaZ = target.getZ() - getZ();
+		double horizontalDistance = Math.sqrt(deltaX * deltaX + deltaZ * deltaZ);
+
+		arrow.setBaseDamage(ARCHER_ARROW_DAMAGE);
+		arrow.shoot(deltaX, deltaY + horizontalDistance * 0.2D, deltaZ, velocity, 8.0F);
+
+		playSound(SoundEvents.SKELETON_SHOOT, 1.0F, 1.0F / (getRandom().nextFloat() * 0.4F + 0.8F));
+		level().addFreshEntity(arrow);
 	}
 
 	private static final class SwordsmanMeleeAttackGoal extends MeleeAttackGoal {
@@ -118,6 +164,92 @@ public class CastleSoldierEntity extends PathfinderMob {
 		@Override
 		public boolean canContinueToUse() {
 			return soldier.isSwordsman() && super.canContinueToUse();
+		}
+	}
+
+	private static final class ArcherNearestHostileTargetGoal extends NearestAttackableTargetGoal<Monster> {
+		private final CastleSoldierEntity soldier;
+
+		private ArcherNearestHostileTargetGoal(CastleSoldierEntity soldier) {
+			super(soldier, Monster.class, true);
+			this.soldier = soldier;
+		}
+
+		@Override
+		public boolean canUse() {
+			return soldier.isArcher() && super.canUse();
+		}
+
+		@Override
+		public boolean canContinueToUse() {
+			return soldier.isArcher() && super.canContinueToUse();
+		}
+	}
+
+	private static final class ArcherRangedAttackGoal extends Goal {
+		private final CastleSoldierEntity soldier;
+		private final double speedModifier;
+		private final double attackRangeSqr;
+		private int attackCooldown;
+
+		private ArcherRangedAttackGoal(CastleSoldierEntity soldier, double speedModifier, double attackRange) {
+			this.soldier = soldier;
+			this.speedModifier = speedModifier;
+			this.attackRangeSqr = attackRange * attackRange;
+			this.attackCooldown = 0;
+			setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK));
+		}
+
+		@Override
+		public boolean canUse() {
+			LivingEntity target = soldier.getTarget();
+			return soldier.isArcher() && target != null && target.isAlive();
+		}
+
+		@Override
+		public boolean canContinueToUse() {
+			LivingEntity target = soldier.getTarget();
+			return soldier.isArcher() && target != null && target.isAlive();
+		}
+
+		@Override
+		public void start() {
+			attackCooldown = 0;
+		}
+
+		@Override
+		public void stop() {
+			attackCooldown = 0;
+			soldier.getNavigation().stop();
+		}
+
+		@Override
+		public void tick() {
+			LivingEntity target = soldier.getTarget();
+
+			if (target == null) {
+				return;
+			}
+
+			double distanceToTargetSqr = soldier.distanceToSqr(target);
+			boolean hasLineOfSight = soldier.getSensing().hasLineOfSight(target);
+
+			soldier.getLookControl().setLookAt(target, 30.0F, 30.0F);
+
+			if (distanceToTargetSqr > attackRangeSqr || !hasLineOfSight) {
+				soldier.getNavigation().moveTo(target, speedModifier);
+			} else {
+				soldier.getNavigation().stop();
+			}
+
+			if (attackCooldown > 0) {
+				attackCooldown--;
+			}
+
+			if (hasLineOfSight && distanceToTargetSqr <= attackRangeSqr && attackCooldown <= 0) {
+				soldier.performRangedAttack(target, ARCHER_PROJECTILE_VELOCITY);
+				attackCooldown = ARCHER_ATTACK_INTERVAL_TICKS;
+			}
 		}
 	}
 }
