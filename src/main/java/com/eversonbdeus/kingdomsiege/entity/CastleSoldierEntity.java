@@ -10,6 +10,7 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.PathfinderMob;
@@ -25,6 +26,7 @@ import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.RangedAttackMob;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.entity.projectile.arrow.Arrow;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -56,8 +58,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final double FOLLOW_MOVE_SPEED = 1.15D;
 	private static final double FOLLOW_REJOIN_DISTANCE = 12.0D;
 	private static final double FOLLOW_REJOIN_DISTANCE_SQR = FOLLOW_REJOIN_DISTANCE * FOLLOW_REJOIN_DISTANCE;
-	private static final double FOLLOW_CHASE_LEASH_DISTANCE = 18.0D;
-	private static final double FOLLOW_CHASE_LEASH_DISTANCE_SQR = FOLLOW_CHASE_LEASH_DISTANCE * FOLLOW_CHASE_LEASH_DISTANCE;
 
 	private SoldierClass soldierClass = SoldierClass.SWORDSMAN;
 	private SoldierMode soldierMode = SoldierMode.GUARD;
@@ -94,12 +94,18 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	public void setSoldierMode(SoldierMode soldierMode) {
 		SoldierMode resolvedMode = soldierMode != null ? soldierMode : SoldierMode.GUARD;
-		boolean changed = this.soldierMode != resolvedMode;
-		this.soldierMode = resolvedMode;
 
-		if (changed) {
-			handleModeChange();
+		if (this.soldierMode == resolvedMode) {
+			if (resolvedMode == SoldierMode.GUARD) {
+				getNavigation().stop();
+			}
+
+			return;
 		}
+
+		this.soldierMode = resolvedMode;
+		clearCurrentTarget();
+		getNavigation().stop();
 	}
 
 	public void toggleSoldierMode() {
@@ -163,11 +169,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return null;
 	}
 
-	public boolean hasActiveOwner() {
-		Player owner = getOwnerPlayer();
-		return owner != null && owner.isAlive() && !owner.isSpectator();
-	}
-
 	public boolean canAutoAcquireHostileTarget() {
 		if (isGuardMode()) {
 			return true;
@@ -177,13 +178,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			return false;
 		}
 
-		Player owner = getOwnerPlayer();
-
-		if (owner == null || !owner.isAlive()) {
-			return false;
-		}
-
-		return distanceToSqr(owner) <= OWNER_PROTECT_RANGE_SQR;
+		Player owner = getValidOwnerPlayer();
+		return owner != null && distanceToSqr(owner) <= OWNER_PROTECT_RANGE_SQR;
 	}
 
 	@Override
@@ -226,44 +222,36 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return super.hurtServer(serverLevel, damageSource, amount);
 	}
 
-	private void handleModeChange() {
-		clearCurrentTarget();
-
-		if (isFollowMode()) {
-			regroupToOwnerOnCommand();
-		}
-	}
-
-	private void regroupToOwnerOnCommand() {
-		Player owner = getOwnerPlayer();
-
-		if (owner == null || !owner.isAlive() || owner.isSpectator()) {
-			return;
-		}
-
-		double distanceToOwnerSqr = distanceToSqr(owner);
-
-		if (distanceToOwnerSqr >= FOLLOW_REJOIN_DISTANCE_SQR) {
-			placeNearOwner(owner);
-			return;
-		}
-
-		if (distanceToOwnerSqr > FOLLOW_STOP_DISTANCE * FOLLOW_STOP_DISTANCE) {
-			getNavigation().moveTo(owner, FOLLOW_MOVE_SPEED);
-		}
-	}
-
 	private boolean isFriendlyDamageSource(DamageSource damageSource) {
 		if (damageSource == null) {
 			return false;
 		}
 
-		if (damageSource.getEntity() instanceof Player player && isOwnedBy(player)) {
-			return true;
+		return isFriendlyDamageEntity(damageSource.getEntity())
+				|| isFriendlyDamageEntity(damageSource.getDirectEntity())
+				|| isFriendlyIndirectDamageEntity(damageSource.getEntity())
+				|| isFriendlyIndirectDamageEntity(damageSource.getDirectEntity());
+	}
+
+	private boolean isFriendlyIndirectDamageEntity(Entity entity) {
+		if (!(entity instanceof Projectile projectile)) {
+			return false;
 		}
 
-		if (damageSource.getEntity() instanceof CastleSoldierEntity otherSoldier && hasSameOwner(otherSoldier)) {
-			return true;
+		return isFriendlyDamageEntity(projectile.getOwner());
+	}
+
+	private boolean isFriendlyDamageEntity(Entity entity) {
+		if (entity == null) {
+			return false;
+		}
+
+		if (entity instanceof Player player) {
+			return isOwnedBy(player);
+		}
+
+		if (entity instanceof CastleSoldierEntity otherSoldier) {
+			return hasSameOwner(otherSoldier);
 		}
 
 		return false;
@@ -274,12 +262,9 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			return;
 		}
 
-		if (hasActiveOwner()) {
-			return;
+		if (getValidOwnerPlayer() == null) {
+			setSoldierMode(SoldierMode.GUARD);
 		}
-
-		soldierMode = SoldierMode.GUARD;
-		clearCurrentTarget();
 	}
 
 	private void validateCurrentTarget() {
@@ -296,7 +281,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		if (shouldDisengageFromTarget(currentTarget)) {
 			clearCurrentTarget();
-			regroupToOwnerOnCommand();
 		}
 	}
 
@@ -305,9 +289,9 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			return false;
 		}
 
-		Player owner = getOwnerPlayer();
+		Player owner = getValidOwnerPlayer();
 
-		if (owner == null || !owner.isAlive() || owner.isSpectator()) {
+		if (owner == null) {
 			return true;
 		}
 
@@ -315,16 +299,22 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			return true;
 		}
 
-		if (target.distanceToSqr(owner) > OWNER_PROTECT_RANGE_SQR) {
-			return true;
-		}
-
-		return distanceToSqr(target) > FOLLOW_CHASE_LEASH_DISTANCE_SQR;
+		return target.distanceToSqr(owner) > OWNER_PROTECT_RANGE_SQR;
 	}
 
 	private void clearCurrentTarget() {
 		setTarget(null);
 		getNavigation().stop();
+	}
+
+	private Player getValidOwnerPlayer() {
+		Player owner = getOwnerPlayer();
+
+		if (owner == null || !owner.isAlive() || owner.isRemoved() || owner.isSpectator()) {
+			return null;
+		}
+
+		return owner;
 	}
 
 	private boolean isValidCombatTarget(LivingEntity target) {
@@ -357,18 +347,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 
 		return false;
-	}
-
-	private void placeNearOwner(Player owner) {
-		double targetX = owner.getX() - owner.getLookAngle().x * 1.5D;
-		double targetY = owner.getY();
-		double targetZ = owner.getZ() - owner.getLookAngle().z * 1.5D;
-
-		getNavigation().stop();
-		setPos(targetX, targetY, targetZ);
-		setYRot(owner.getYRot());
-		setXRot(owner.getXRot());
-		setDeltaMovement(0.0D, 0.0D, 0.0D);
 	}
 
 	@Override
@@ -443,9 +421,9 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		@Override
 		public boolean canUse() {
-			Player owner = soldier.getOwnerPlayer();
+			Player owner = soldier.getValidOwnerPlayer();
 
-			if (owner == null || !owner.isAlive()) {
+			if (owner == null) {
 				return false;
 			}
 
@@ -475,7 +453,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		@Override
 		public void start() {
-			Player owner = soldier.getOwnerPlayer();
+			Player owner = soldier.getValidOwnerPlayer();
 
 			if (owner != null && ownerAttacker != null) {
 				lastOwnerAttackedTime = owner.getLastHurtByMobTimestamp();
@@ -505,9 +483,9 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		@Override
 		public boolean canUse() {
-			Player owner = soldier.getOwnerPlayer();
+			Player owner = soldier.getValidOwnerPlayer();
 
-			if (owner == null || !owner.isAlive()) {
+			if (owner == null) {
 				return false;
 			}
 
@@ -537,7 +515,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		@Override
 		public void start() {
-			Player owner = soldier.getOwnerPlayer();
+			Player owner = soldier.getValidOwnerPlayer();
 
 			if (owner != null && ownerTarget != null) {
 				lastOwnerAttackTime = owner.getLastHurtMobTimestamp();
@@ -569,8 +547,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		@Override
 		public boolean canContinueToUse() {
-			LivingEntity target = soldier.getTarget();
-			return soldier.isSwordsman() && soldier.isValidCombatTarget(target) && super.canContinueToUse();
+			return soldier.isSwordsman() && super.canContinueToUse();
 		}
 	}
 
@@ -629,13 +606,13 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		@Override
 		public boolean canUse() {
 			LivingEntity target = soldier.getTarget();
-			return soldier.isArcher() && soldier.isValidCombatTarget(target);
+			return soldier.isArcher() && target != null && target.isAlive();
 		}
 
 		@Override
 		public boolean canContinueToUse() {
 			LivingEntity target = soldier.getTarget();
-			return soldier.isArcher() && soldier.isValidCombatTarget(target);
+			return soldier.isArcher() && target != null && target.isAlive();
 		}
 
 		@Override
@@ -718,9 +695,9 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		@Override
 		public boolean canUse() {
-			Player owner = soldier.getOwnerPlayer();
+			Player owner = soldier.getValidOwnerPlayer();
 
-			if (!soldier.isFollowMode() || owner == null || !owner.isAlive() || owner.isSpectator()) {
+			if (!soldier.isFollowMode() || owner == null) {
 				return false;
 			}
 
@@ -733,9 +710,9 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		@Override
 		public boolean canContinueToUse() {
-			Player owner = soldier.getOwnerPlayer();
+			Player owner = soldier.getValidOwnerPlayer();
 
-			if (!soldier.isFollowMode() || owner == null || !owner.isAlive() || owner.isSpectator()) {
+			if (!soldier.isFollowMode() || owner == null) {
 				return false;
 			}
 
@@ -758,7 +735,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		@Override
 		public void tick() {
-			Player owner = soldier.getOwnerPlayer();
+			Player owner = soldier.getValidOwnerPlayer();
 
 			if (owner == null) {
 				return;
@@ -767,7 +744,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			double distanceToOwnerSqr = soldier.distanceToSqr(owner);
 
 			if (distanceToOwnerSqr >= FOLLOW_REJOIN_DISTANCE_SQR) {
-				soldier.placeNearOwner(owner);
+				rejoinNearOwner(owner);
 				return;
 			}
 
@@ -777,6 +754,18 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				timeToRecalculatePath = 10;
 				soldier.getNavigation().moveTo(owner, speedModifier);
 			}
+		}
+
+		private void rejoinNearOwner(Player owner) {
+			double targetX = owner.getX() - owner.getLookAngle().x * 1.5D;
+			double targetY = owner.getY();
+			double targetZ = owner.getZ() - owner.getLookAngle().z * 1.5D;
+
+			soldier.getNavigation().stop();
+			soldier.setPos(targetX, targetY, targetZ);
+			soldier.setYRot(owner.getYRot());
+			soldier.setXRot(owner.getXRot());
+			soldier.setDeltaMovement(0.0D, 0.0D, 0.0D);
 		}
 	}
 }
