@@ -161,8 +161,9 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		goalSelector.addGoal(5, new RandomLookAroundGoal(this));
 
 		targetSelector.addGoal(0, new ProtectOwnerWhenHurtGoal(this));
-		targetSelector.addGoal(1, new SwordsmanNearestHostileTargetGoal(this));
-		targetSelector.addGoal(1, new ArcherNearestHostileTargetGoal(this));
+		targetSelector.addGoal(1, new AssistOwnerAttackTargetGoal(this));
+		targetSelector.addGoal(2, new SwordsmanNearestHostileTargetGoal(this));
+		targetSelector.addGoal(2, new ArcherNearestHostileTargetGoal(this));
 	}
 
 	@Override
@@ -301,6 +302,80 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			}
 
 			return attacker instanceof Monster;
+		}
+	}
+
+	private static final class AssistOwnerAttackTargetGoal extends Goal {
+		private final CastleSoldierEntity soldier;
+		private LivingEntity ownerTarget;
+		private int lastOwnerAttackTime;
+
+		private AssistOwnerAttackTargetGoal(CastleSoldierEntity soldier) {
+			this.soldier = soldier;
+			this.lastOwnerAttackTime = 0;
+			setFlags(EnumSet.of(Goal.Flag.TARGET));
+		}
+
+		@Override
+		public boolean canUse() {
+			Player owner = soldier.getOwnerPlayer();
+
+			if (owner == null || !owner.isAlive()) {
+				return false;
+			}
+
+			if (soldier.distanceToSqr(owner) > OWNER_PROTECT_RANGE_SQR) {
+				return false;
+			}
+
+			LivingEntity target = owner.getLastHurtMob();
+			int attackTime = owner.getLastHurtMobTimestamp();
+
+			if (attackTime == lastOwnerAttackTime) {
+				return false;
+			}
+
+			if (!isValidTarget(target, owner)) {
+				return false;
+			}
+
+			ownerTarget = target;
+			return true;
+		}
+
+		@Override
+		public boolean canContinueToUse() {
+			return false;
+		}
+
+		@Override
+		public void start() {
+			Player owner = soldier.getOwnerPlayer();
+
+			if (owner != null && ownerTarget != null) {
+				lastOwnerAttackTime = owner.getLastHurtMobTimestamp();
+				soldier.setTarget(ownerTarget);
+			}
+
+			super.start();
+		}
+
+		@Override
+		public void stop() {
+			ownerTarget = null;
+			super.stop();
+		}
+
+		private boolean isValidTarget(LivingEntity target, Player owner) {
+			if (target == null || !target.isAlive()) {
+				return false;
+			}
+
+			if (target == soldier || target == owner) {
+				return false;
+			}
+
+			return target instanceof Monster;
 		}
 	}
 
