@@ -94,9 +94,11 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		SoldierMode resolvedMode = soldierMode != null ? soldierMode : SoldierMode.GUARD;
 		this.soldierMode = resolvedMode;
 
-		if (resolvedMode == SoldierMode.GUARD && getTarget() == null) {
-			getNavigation().stop();
+		if (getTarget() != null) {
+			setTarget(null);
 		}
+
+		getNavigation().stop();
 	}
 
 	public void toggleSoldierMode() {
