@@ -1,6 +1,6 @@
 package com.eversonbdeus.kingdomsiege;
 
-import com.eversonbdeus.kingdomsiege.component.ModComponents;
+import com.eversonbdeus.kingdomsiege.registry.ModComponents;
 import com.eversonbdeus.kingdomsiege.registry.ModEntities;
 import com.eversonbdeus.kingdomsiege.registry.ModItems;
 import net.fabricmc.api.ModInitializer;
