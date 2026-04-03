@@ -6,6 +6,7 @@ import com.eversonbdeus.kingdomsiege.soldier.SoldierMode;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -171,6 +172,26 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	@Override
 	public boolean removeWhenFarAway(double distanceToClosestPlayer) {
 		return false;
+	}
+	@Override
+	public boolean hurtServer(ServerLevel serverLevel, DamageSource damageSource, float amount) {
+		if (isOwnerDamage(damageSource)) {
+			return false;
+		}
+
+		return super.hurtServer(serverLevel, damageSource, amount);
+	}
+
+	private boolean isOwnerDamage(DamageSource damageSource) {
+		if (damageSource == null) {
+			return false;
+		}
+
+		if (!(damageSource.getEntity() instanceof Player player)) {
+			return false;
+		}
+
+		return isOwnedBy(player);
 	}
 
 	@Override
