@@ -22,7 +22,13 @@ public record SoldierBlueprintData(
 		int inheritedProjectileProtectionLevel,
 		int inheritedBlastProtectionLevel,
 		int inheritedFireProtectionLevel,
-		int inheritedThornsLevel
+		int inheritedThornsLevel,
+		int inheritedSharpnessLevel,
+		int inheritedFireAspectLevel,
+		int inheritedKnockbackLevel,
+		int inheritedPowerLevel,
+		int inheritedPunchLevel,
+		int inheritedFlameLevel
 ) {
 	private static final double DEFAULT_ARCHER_PROJECTILE_DAMAGE = 2.5D;
 	private static final double DEFAULT_ARCHER_MELEE_DAMAGE = 1.0D;
@@ -34,12 +40,29 @@ public record SoldierBlueprintData(
 			CatalystType.CODEC.optionalFieldOf("catalyst_type", CatalystType.NONE).forGetter(SoldierBlueprintData::catalystType),
 			ItemStack.CODEC.optionalFieldOf("weapon_stack", ItemStack.EMPTY).forGetter(SoldierBlueprintData::weaponStack),
 			ItemStack.CODEC.optionalFieldOf("chestplate_stack", ItemStack.EMPTY).forGetter(SoldierBlueprintData::chestplateStack),
-			Codec.INT.optionalFieldOf("inherited_protection_level", 0).forGetter(SoldierBlueprintData::inheritedProtectionLevel),
-			Codec.INT.optionalFieldOf("inherited_projectile_protection_level", 0).forGetter(SoldierBlueprintData::inheritedProjectileProtectionLevel),
-			Codec.INT.optionalFieldOf("inherited_blast_protection_level", 0).forGetter(SoldierBlueprintData::inheritedBlastProtectionLevel),
-			Codec.INT.optionalFieldOf("inherited_fire_protection_level", 0).forGetter(SoldierBlueprintData::inheritedFireProtectionLevel),
-			Codec.INT.optionalFieldOf("inherited_thorns_level", 0).forGetter(SoldierBlueprintData::inheritedThornsLevel)
-	).apply(instance, SoldierBlueprintData::new));
+			InheritedEnchantments.CODEC.optionalFieldOf("inherited_enchantments", InheritedEnchantments.EMPTY)
+					.forGetter(InheritedEnchantments::fromBlueprint)
+	).apply(instance, (soldierClass, armorTier, weaponClass, catalystType, weaponStack, chestplateStack, inheritedEnchantments) ->
+			new SoldierBlueprintData(
+					soldierClass,
+					armorTier,
+					weaponClass,
+					catalystType,
+					weaponStack,
+					chestplateStack,
+					inheritedEnchantments.protectionLevel(),
+					inheritedEnchantments.projectileProtectionLevel(),
+					inheritedEnchantments.blastProtectionLevel(),
+					inheritedEnchantments.fireProtectionLevel(),
+					inheritedEnchantments.thornsLevel(),
+					inheritedEnchantments.sharpnessLevel(),
+					inheritedEnchantments.fireAspectLevel(),
+					inheritedEnchantments.knockbackLevel(),
+					inheritedEnchantments.powerLevel(),
+					inheritedEnchantments.punchLevel(),
+					inheritedEnchantments.flameLevel()
+			)
+	));
 
 	public SoldierBlueprintData {
 		soldierClass = soldierClass != null ? soldierClass : SoldierClass.SWORDSMAN;
@@ -60,6 +83,12 @@ public record SoldierBlueprintData(
 		inheritedBlastProtectionLevel = sanitizeEnchantmentLevel(inheritedBlastProtectionLevel);
 		inheritedFireProtectionLevel = sanitizeEnchantmentLevel(inheritedFireProtectionLevel);
 		inheritedThornsLevel = sanitizeEnchantmentLevel(inheritedThornsLevel);
+		inheritedSharpnessLevel = sanitizeEnchantmentLevel(inheritedSharpnessLevel);
+		inheritedFireAspectLevel = sanitizeEnchantmentLevel(inheritedFireAspectLevel);
+		inheritedKnockbackLevel = sanitizeEnchantmentLevel(inheritedKnockbackLevel);
+		inheritedPowerLevel = sanitizeEnchantmentLevel(inheritedPowerLevel);
+		inheritedPunchLevel = sanitizeEnchantmentLevel(inheritedPunchLevel);
+		inheritedFlameLevel = sanitizeEnchantmentLevel(inheritedFlameLevel);
 	}
 
 	public static SoldierBlueprintData defaultRecruit() {
@@ -78,12 +107,19 @@ public record SoldierBlueprintData(
 				0,
 				0,
 				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
 				0
 		);
 	}
 
 	public static SoldierBlueprintData swordsmanFromCraft(ItemStack swordStack, ItemStack chestplateStack) {
 		ArmorTier armorTier = ArmorTier.fromChestplate(chestplateStack);
+		InheritedEnchantments inheritedEnchantments = InheritedEnchantments.fromSwordsmanCraft(swordStack, chestplateStack);
 
 		return new SoldierBlueprintData(
 				SoldierClass.SWORDSMAN,
@@ -92,16 +128,23 @@ public record SoldierBlueprintData(
 				CatalystType.GOLDEN_APPLE,
 				sanitizeCraftSwordStack(swordStack),
 				sanitizeCraftChestplateStack(chestplateStack),
-				resolveEnchantmentLevel(chestplateStack, Enchantments.PROTECTION),
-				resolveEnchantmentLevel(chestplateStack, Enchantments.PROJECTILE_PROTECTION),
-				resolveEnchantmentLevel(chestplateStack, Enchantments.BLAST_PROTECTION),
-				resolveEnchantmentLevel(chestplateStack, Enchantments.FIRE_PROTECTION),
-				resolveEnchantmentLevel(chestplateStack, Enchantments.THORNS)
+				inheritedEnchantments.protectionLevel(),
+				inheritedEnchantments.projectileProtectionLevel(),
+				inheritedEnchantments.blastProtectionLevel(),
+				inheritedEnchantments.fireProtectionLevel(),
+				inheritedEnchantments.thornsLevel(),
+				inheritedEnchantments.sharpnessLevel(),
+				inheritedEnchantments.fireAspectLevel(),
+				inheritedEnchantments.knockbackLevel(),
+				inheritedEnchantments.powerLevel(),
+				inheritedEnchantments.punchLevel(),
+				inheritedEnchantments.flameLevel()
 		);
 	}
 
 	public static SoldierBlueprintData archerFromCraft(ItemStack bowStack, ItemStack chestplateStack) {
 		ArmorTier armorTier = ArmorTier.fromChestplate(chestplateStack);
+		InheritedEnchantments inheritedEnchantments = InheritedEnchantments.fromArcherCraft(bowStack, chestplateStack);
 
 		return new SoldierBlueprintData(
 				SoldierClass.ARCHER,
@@ -110,11 +153,17 @@ public record SoldierBlueprintData(
 				CatalystType.GOLDEN_APPLE,
 				sanitizeCraftBowStack(bowStack),
 				sanitizeCraftChestplateStack(chestplateStack),
-				resolveEnchantmentLevel(chestplateStack, Enchantments.PROTECTION),
-				resolveEnchantmentLevel(chestplateStack, Enchantments.PROJECTILE_PROTECTION),
-				resolveEnchantmentLevel(chestplateStack, Enchantments.BLAST_PROTECTION),
-				resolveEnchantmentLevel(chestplateStack, Enchantments.FIRE_PROTECTION),
-				resolveEnchantmentLevel(chestplateStack, Enchantments.THORNS)
+				inheritedEnchantments.protectionLevel(),
+				inheritedEnchantments.projectileProtectionLevel(),
+				inheritedEnchantments.blastProtectionLevel(),
+				inheritedEnchantments.fireProtectionLevel(),
+				inheritedEnchantments.thornsLevel(),
+				inheritedEnchantments.sharpnessLevel(),
+				inheritedEnchantments.fireAspectLevel(),
+				inheritedEnchantments.knockbackLevel(),
+				inheritedEnchantments.powerLevel(),
+				inheritedEnchantments.punchLevel(),
+				inheritedEnchantments.flameLevel()
 		);
 	}
 
@@ -165,6 +214,31 @@ public record SoldierBlueprintData(
 		appendEnchantment(summary, "Explosão", inheritedBlastProtectionLevel);
 		appendEnchantment(summary, "Fogo", inheritedFireProtectionLevel);
 		appendEnchantment(summary, "Espinhos", inheritedThornsLevel);
+
+		return summary.isEmpty() ? "Nenhuma" : summary.toString();
+	}
+
+	public boolean hasInheritedWeaponEnchantments() {
+		return inheritedSharpnessLevel > 0
+				|| inheritedFireAspectLevel > 0
+				|| inheritedKnockbackLevel > 0
+				|| inheritedPowerLevel > 0
+				|| inheritedPunchLevel > 0
+				|| inheritedFlameLevel > 0;
+	}
+
+	public String getInheritedWeaponEnchantmentsSummary() {
+		StringBuilder summary = new StringBuilder();
+
+		if (weaponClass == WeaponClass.BOW) {
+			appendEnchantment(summary, "Força", inheritedPowerLevel);
+			appendEnchantment(summary, "Impacto", inheritedPunchLevel);
+			appendEnchantment(summary, "Chama", inheritedFlameLevel);
+		} else {
+			appendEnchantment(summary, "Afiação", inheritedSharpnessLevel);
+			appendEnchantment(summary, "Aspecto Flamejante", inheritedFireAspectLevel);
+			appendEnchantment(summary, "Repulsão", inheritedKnockbackLevel);
+		}
 
 		return summary.isEmpty() ? "Nenhuma" : summary.toString();
 	}
@@ -289,5 +363,83 @@ public record SoldierBlueprintData(
 			case NETHERITE -> new ItemStack(Items.NETHERITE_CHESTPLATE);
 			case LEATHER -> new ItemStack(Items.LEATHER_CHESTPLATE);
 		};
+	}
+
+	private record InheritedEnchantments(
+			int protectionLevel,
+			int projectileProtectionLevel,
+			int blastProtectionLevel,
+			int fireProtectionLevel,
+			int thornsLevel,
+			int sharpnessLevel,
+			int fireAspectLevel,
+			int knockbackLevel,
+			int powerLevel,
+			int punchLevel,
+			int flameLevel
+	) {
+		private static final InheritedEnchantments EMPTY = new InheritedEnchantments(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+
+		private static final Codec<InheritedEnchantments> CODEC = RecordCodecBuilder.create(instance -> instance.group(
+				Codec.INT.optionalFieldOf("protection_level", 0).forGetter(InheritedEnchantments::protectionLevel),
+				Codec.INT.optionalFieldOf("projectile_protection_level", 0).forGetter(InheritedEnchantments::projectileProtectionLevel),
+				Codec.INT.optionalFieldOf("blast_protection_level", 0).forGetter(InheritedEnchantments::blastProtectionLevel),
+				Codec.INT.optionalFieldOf("fire_protection_level", 0).forGetter(InheritedEnchantments::fireProtectionLevel),
+				Codec.INT.optionalFieldOf("thorns_level", 0).forGetter(InheritedEnchantments::thornsLevel),
+				Codec.INT.optionalFieldOf("sharpness_level", 0).forGetter(InheritedEnchantments::sharpnessLevel),
+				Codec.INT.optionalFieldOf("fire_aspect_level", 0).forGetter(InheritedEnchantments::fireAspectLevel),
+				Codec.INT.optionalFieldOf("knockback_level", 0).forGetter(InheritedEnchantments::knockbackLevel),
+				Codec.INT.optionalFieldOf("power_level", 0).forGetter(InheritedEnchantments::powerLevel),
+				Codec.INT.optionalFieldOf("punch_level", 0).forGetter(InheritedEnchantments::punchLevel),
+				Codec.INT.optionalFieldOf("flame_level", 0).forGetter(InheritedEnchantments::flameLevel)
+		).apply(instance, InheritedEnchantments::new));
+
+		private static InheritedEnchantments fromBlueprint(SoldierBlueprintData blueprint) {
+			return new InheritedEnchantments(
+					blueprint.inheritedProtectionLevel(),
+					blueprint.inheritedProjectileProtectionLevel(),
+					blueprint.inheritedBlastProtectionLevel(),
+					blueprint.inheritedFireProtectionLevel(),
+					blueprint.inheritedThornsLevel(),
+					blueprint.inheritedSharpnessLevel(),
+					blueprint.inheritedFireAspectLevel(),
+					blueprint.inheritedKnockbackLevel(),
+					blueprint.inheritedPowerLevel(),
+					blueprint.inheritedPunchLevel(),
+					blueprint.inheritedFlameLevel()
+			);
+		}
+
+		private static InheritedEnchantments fromSwordsmanCraft(ItemStack swordStack, ItemStack chestplateStack) {
+			return new InheritedEnchantments(
+					resolveEnchantmentLevel(chestplateStack, Enchantments.PROTECTION),
+					resolveEnchantmentLevel(chestplateStack, Enchantments.PROJECTILE_PROTECTION),
+					resolveEnchantmentLevel(chestplateStack, Enchantments.BLAST_PROTECTION),
+					resolveEnchantmentLevel(chestplateStack, Enchantments.FIRE_PROTECTION),
+					resolveEnchantmentLevel(chestplateStack, Enchantments.THORNS),
+					resolveEnchantmentLevel(swordStack, Enchantments.SHARPNESS),
+					resolveEnchantmentLevel(swordStack, Enchantments.FIRE_ASPECT),
+					resolveEnchantmentLevel(swordStack, Enchantments.KNOCKBACK),
+					0,
+					0,
+					0
+			);
+		}
+
+		private static InheritedEnchantments fromArcherCraft(ItemStack bowStack, ItemStack chestplateStack) {
+			return new InheritedEnchantments(
+					resolveEnchantmentLevel(chestplateStack, Enchantments.PROTECTION),
+					resolveEnchantmentLevel(chestplateStack, Enchantments.PROJECTILE_PROTECTION),
+					resolveEnchantmentLevel(chestplateStack, Enchantments.BLAST_PROTECTION),
+					resolveEnchantmentLevel(chestplateStack, Enchantments.FIRE_PROTECTION),
+					resolveEnchantmentLevel(chestplateStack, Enchantments.THORNS),
+					0,
+					0,
+					0,
+					resolveEnchantmentLevel(bowStack, Enchantments.POWER),
+					resolveEnchantmentLevel(bowStack, Enchantments.PUNCH),
+					resolveEnchantmentLevel(bowStack, Enchantments.FLAME)
+			);
+		}
 	}
 }
