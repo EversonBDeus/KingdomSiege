@@ -11,6 +11,7 @@ import com.mojang.serialization.Codec;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.network.chat.Component;
+import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.InteractionHand;
@@ -53,6 +54,9 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final double BASE_ARMOR = 0.0D;
 	private static final double BASE_ARMOR_TOUGHNESS = 0.0D;
 	private static final double BASE_KNOCKBACK_RESISTANCE = 0.0D;
+	private static final double INHERITED_PROTECTION_REDUCTION_PER_LEVEL = 0.04D;
+	private static final double INHERITED_SPECIAL_PROTECTION_REDUCTION_PER_LEVEL = 0.08D;
+	private static final float THORNS_CHANCE_PER_LEVEL = 0.15F;
 
 	private static final double SWORDSMAN_MELEE_SPEED = 1.15D;
 
@@ -155,7 +159,12 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				WeaponClass.fromSoldierClass(soldierClass),
 				getCatalystType(),
 				defaultBlueprint.weaponStack(),
-				currentBlueprint.chestplateStack()
+				currentBlueprint.chestplateStack(),
+				currentBlueprint.inheritedProtectionLevel(),
+				currentBlueprint.inheritedProjectileProtectionLevel(),
+				currentBlueprint.inheritedBlastProtectionLevel(),
+				currentBlueprint.inheritedFireProtectionLevel(),
+				currentBlueprint.inheritedThornsLevel()
 		));
 	}
 
@@ -302,7 +311,19 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			return false;
 		}
 
-		return super.hurtServer(serverLevel, damageSource, amount);
+		float adjustedAmount = applyInheritedDefensiveEnchantments(damageSource, amount);
+
+		if (adjustedAmount <= 0.0F) {
+			return false;
+		}
+
+		boolean damaged = super.hurtServer(serverLevel, damageSource, adjustedAmount);
+
+		if (damaged) {
+			applyInheritedThorns(serverLevel, damageSource);
+		}
+
+		return damaged;
 	}
 
 	private boolean isFriendlyDamageSource(DamageSource damageSource) {
@@ -314,6 +335,56 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				|| isFriendlyDamageEntity(damageSource.getDirectEntity())
 				|| isFriendlyIndirectDamageEntity(damageSource.getEntity())
 				|| isFriendlyIndirectDamageEntity(damageSource.getDirectEntity());
+	}
+
+	private float applyInheritedDefensiveEnchantments(DamageSource damageSource, float amount) {
+		float adjustedAmount = amount;
+
+		adjustedAmount = applyDamageReduction(adjustedAmount, soldierBlueprint.inheritedProtectionLevel(), INHERITED_PROTECTION_REDUCTION_PER_LEVEL);
+
+		if (damageSource != null && damageSource.is(DamageTypeTags.IS_PROJECTILE)) {
+			adjustedAmount = applyDamageReduction(adjustedAmount, soldierBlueprint.inheritedProjectileProtectionLevel(), INHERITED_SPECIAL_PROTECTION_REDUCTION_PER_LEVEL);
+		}
+
+		if (damageSource != null && damageSource.is(DamageTypeTags.IS_EXPLOSION)) {
+			adjustedAmount = applyDamageReduction(adjustedAmount, soldierBlueprint.inheritedBlastProtectionLevel(), INHERITED_SPECIAL_PROTECTION_REDUCTION_PER_LEVEL);
+		}
+
+		if (damageSource != null && damageSource.is(DamageTypeTags.IS_FIRE)) {
+			adjustedAmount = applyDamageReduction(adjustedAmount, soldierBlueprint.inheritedFireProtectionLevel(), INHERITED_SPECIAL_PROTECTION_REDUCTION_PER_LEVEL);
+		}
+
+		return Math.max(0.0F, adjustedAmount);
+	}
+
+	private float applyDamageReduction(float amount, int level, double reductionPerLevel) {
+		if (level <= 0) {
+			return amount;
+		}
+
+		double totalReduction = Math.min(0.80D, level * reductionPerLevel);
+		return (float) (amount * (1.0D - totalReduction));
+	}
+
+	private void applyInheritedThorns(ServerLevel serverLevel, DamageSource damageSource) {
+		int thornsLevel = soldierBlueprint.inheritedThornsLevel();
+
+		if (thornsLevel <= 0) {
+			return;
+		}
+
+		Entity attacker = damageSource != null ? damageSource.getEntity() : null;
+
+		if (!(attacker instanceof LivingEntity livingAttacker) || isFriendlyDamageEntity(attacker)) {
+			return;
+		}
+
+		if (getRandom().nextFloat() > Math.min(0.75F, THORNS_CHANCE_PER_LEVEL * thornsLevel)) {
+			return;
+		}
+
+		float reflectedDamage = 1.0F + getRandom().nextInt(thornsLevel + 1);
+		livingAttacker.hurtServer(serverLevel, damageSources().thorns(this), reflectedDamage);
 	}
 
 	private boolean isFriendlyIndirectDamageEntity(Entity entity) {
@@ -534,6 +605,14 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		);
 	}
 
+	private Component getInheritedEnchantmentsComponent() {
+		if (!soldierBlueprint.hasInheritedChestplateEnchantments()) {
+			return null;
+		}
+
+		return Component.literal("Heranças do peitoral: " + soldierBlueprint.getInheritedChestplateEnchantmentsSummary());
+	}
+
 	private Component getTerritoryStatusComponent() {
 		if (hasHomePos()) {
 			return Component.translatable(
@@ -579,6 +658,12 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		));
 
 		player.sendSystemMessage(getCombatPowerComponent());
+
+		Component inheritedEnchantmentsComponent = getInheritedEnchantmentsComponent();
+		if (inheritedEnchantmentsComponent != null) {
+			player.sendSystemMessage(inheritedEnchantmentsComponent);
+		}
+
 		player.sendSystemMessage(getTerritoryStatusComponent());
 	}
 

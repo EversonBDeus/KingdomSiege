@@ -130,6 +130,11 @@ public class SoldierSpawnEggItem extends SpawnEggItem {
 				formatOneDecimal(blueprint.getArmorBonus()),
 				formatOneDecimal(blueprint.getToughnessBonus())
 		).withStyle(ChatFormatting.GREEN));
+
+		if (blueprint.hasInheritedChestplateEnchantments()) {
+			tooltipAdder.accept(Component.literal("Heranças do peitoral: " + blueprint.getInheritedChestplateEnchantmentsSummary())
+					.withStyle(ChatFormatting.LIGHT_PURPLE));
+		}
 	}
 
 	@Override

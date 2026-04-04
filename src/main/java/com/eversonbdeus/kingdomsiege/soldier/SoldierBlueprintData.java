@@ -2,8 +2,14 @@ package com.eversonbdeus.kingdomsiege.soldier;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
+import net.minecraft.core.Holder;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.enchantment.Enchantment;
+import net.minecraft.world.item.enchantment.Enchantments;
+import net.minecraft.world.item.enchantment.ItemEnchantments;
 
 public record SoldierBlueprintData(
 		SoldierClass soldierClass,
@@ -11,7 +17,12 @@ public record SoldierBlueprintData(
 		WeaponClass weaponClass,
 		CatalystType catalystType,
 		ItemStack weaponStack,
-		ItemStack chestplateStack
+		ItemStack chestplateStack,
+		int inheritedProtectionLevel,
+		int inheritedProjectileProtectionLevel,
+		int inheritedBlastProtectionLevel,
+		int inheritedFireProtectionLevel,
+		int inheritedThornsLevel
 ) {
 	private static final double DEFAULT_ARCHER_PROJECTILE_DAMAGE = 2.5D;
 	private static final double DEFAULT_ARCHER_MELEE_DAMAGE = 1.0D;
@@ -22,7 +33,12 @@ public record SoldierBlueprintData(
 			WeaponClass.CODEC.fieldOf("weapon_class").forGetter(SoldierBlueprintData::weaponClass),
 			CatalystType.CODEC.optionalFieldOf("catalyst_type", CatalystType.NONE).forGetter(SoldierBlueprintData::catalystType),
 			ItemStack.CODEC.optionalFieldOf("weapon_stack", ItemStack.EMPTY).forGetter(SoldierBlueprintData::weaponStack),
-			ItemStack.CODEC.optionalFieldOf("chestplate_stack", ItemStack.EMPTY).forGetter(SoldierBlueprintData::chestplateStack)
+			ItemStack.CODEC.optionalFieldOf("chestplate_stack", ItemStack.EMPTY).forGetter(SoldierBlueprintData::chestplateStack),
+			Codec.INT.optionalFieldOf("inherited_protection_level", 0).forGetter(SoldierBlueprintData::inheritedProtectionLevel),
+			Codec.INT.optionalFieldOf("inherited_projectile_protection_level", 0).forGetter(SoldierBlueprintData::inheritedProjectileProtectionLevel),
+			Codec.INT.optionalFieldOf("inherited_blast_protection_level", 0).forGetter(SoldierBlueprintData::inheritedBlastProtectionLevel),
+			Codec.INT.optionalFieldOf("inherited_fire_protection_level", 0).forGetter(SoldierBlueprintData::inheritedFireProtectionLevel),
+			Codec.INT.optionalFieldOf("inherited_thorns_level", 0).forGetter(SoldierBlueprintData::inheritedThornsLevel)
 	).apply(instance, SoldierBlueprintData::new));
 
 	public SoldierBlueprintData {
@@ -39,6 +55,11 @@ public record SoldierBlueprintData(
 		// para evitar crash no carregamento de mundo.
 		weaponStack = sanitizeStoredStack(weaponStack);
 		chestplateStack = sanitizeStoredStack(chestplateStack);
+		inheritedProtectionLevel = sanitizeEnchantmentLevel(inheritedProtectionLevel);
+		inheritedProjectileProtectionLevel = sanitizeEnchantmentLevel(inheritedProjectileProtectionLevel);
+		inheritedBlastProtectionLevel = sanitizeEnchantmentLevel(inheritedBlastProtectionLevel);
+		inheritedFireProtectionLevel = sanitizeEnchantmentLevel(inheritedFireProtectionLevel);
+		inheritedThornsLevel = sanitizeEnchantmentLevel(inheritedThornsLevel);
 	}
 
 	public static SoldierBlueprintData defaultRecruit() {
@@ -52,7 +73,12 @@ public record SoldierBlueprintData(
 				WeaponClass.fromSoldierClass(soldierClass),
 				CatalystType.NONE,
 				defaultWeaponStack(soldierClass),
-				defaultChestplateStack(armorTier)
+				defaultChestplateStack(armorTier),
+				0,
+				0,
+				0,
+				0,
+				0
 		);
 	}
 
@@ -65,7 +91,12 @@ public record SoldierBlueprintData(
 				WeaponClass.SWORD,
 				CatalystType.GOLDEN_APPLE,
 				sanitizeCraftSwordStack(swordStack),
-				sanitizeCraftChestplateStack(chestplateStack)
+				sanitizeCraftChestplateStack(chestplateStack),
+				resolveEnchantmentLevel(chestplateStack, Enchantments.PROTECTION),
+				resolveEnchantmentLevel(chestplateStack, Enchantments.PROJECTILE_PROTECTION),
+				resolveEnchantmentLevel(chestplateStack, Enchantments.BLAST_PROTECTION),
+				resolveEnchantmentLevel(chestplateStack, Enchantments.FIRE_PROTECTION),
+				resolveEnchantmentLevel(chestplateStack, Enchantments.THORNS)
 		);
 	}
 
@@ -78,7 +109,12 @@ public record SoldierBlueprintData(
 				WeaponClass.BOW,
 				CatalystType.GOLDEN_APPLE,
 				sanitizeCraftBowStack(bowStack),
-				sanitizeCraftChestplateStack(chestplateStack)
+				sanitizeCraftChestplateStack(chestplateStack),
+				resolveEnchantmentLevel(chestplateStack, Enchantments.PROTECTION),
+				resolveEnchantmentLevel(chestplateStack, Enchantments.PROJECTILE_PROTECTION),
+				resolveEnchantmentLevel(chestplateStack, Enchantments.BLAST_PROTECTION),
+				resolveEnchantmentLevel(chestplateStack, Enchantments.FIRE_PROTECTION),
+				resolveEnchantmentLevel(chestplateStack, Enchantments.THORNS)
 		);
 	}
 
@@ -112,6 +148,57 @@ public record SoldierBlueprintData(
 
 	public double getKnockbackResistanceBonus() {
 		return armorTier.getKnockbackResistanceBonus();
+	}
+
+	public boolean hasInheritedChestplateEnchantments() {
+		return inheritedProtectionLevel > 0
+				|| inheritedProjectileProtectionLevel > 0
+				|| inheritedBlastProtectionLevel > 0
+				|| inheritedFireProtectionLevel > 0
+				|| inheritedThornsLevel > 0;
+	}
+
+	public String getInheritedChestplateEnchantmentsSummary() {
+		StringBuilder summary = new StringBuilder();
+		appendEnchantment(summary, "Proteção", inheritedProtectionLevel);
+		appendEnchantment(summary, "Projéteis", inheritedProjectileProtectionLevel);
+		appendEnchantment(summary, "Explosão", inheritedBlastProtectionLevel);
+		appendEnchantment(summary, "Fogo", inheritedFireProtectionLevel);
+		appendEnchantment(summary, "Espinhos", inheritedThornsLevel);
+
+		return summary.isEmpty() ? "Nenhuma" : summary.toString();
+	}
+
+	private static void appendEnchantment(StringBuilder summary, String label, int level) {
+		if (level <= 0) {
+			return;
+		}
+
+		if (!summary.isEmpty()) {
+			summary.append(" | ");
+		}
+
+		summary.append(label).append(' ').append(level);
+	}
+
+	private static int resolveEnchantmentLevel(ItemStack stack, ResourceKey<Enchantment> enchantmentKey) {
+		if (stack == null || stack.isEmpty()) {
+			return 0;
+		}
+
+		ItemEnchantments enchantments = stack.getEnchantments();
+
+		for (Object2IntMap.Entry<Holder<Enchantment>> entry : enchantments.entrySet()) {
+			if (entry.getKey().is(enchantmentKey)) {
+				return sanitizeEnchantmentLevel(entry.getIntValue());
+			}
+		}
+
+		return 0;
+	}
+
+	private static int sanitizeEnchantmentLevel(int level) {
+		return Math.max(0, level);
 	}
 
 	private static double resolveSwordAttackDamage(ItemStack stack) {
