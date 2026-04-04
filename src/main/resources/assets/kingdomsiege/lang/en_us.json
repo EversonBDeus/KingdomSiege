@@ -30,5 +30,18 @@
   "message.kingdomsiege.soldier_mode_changed": "Soldier mode: %s",
   "message.kingdomsiege.soldier_status.header": "Status of %1$s | Class: %2$s | Mode: %3$s",
   "message.kingdomsiege.soldier_status.combat": "Base weapon: %1$s | Internal chestplate: %2$s | Catalyst: %3$s",
-  "message.kingdomsiege.soldier_status.attributes": "Health: %1$s/%2$s | Armor: %3$s | Toughness: %4$s"
+  "message.kingdomsiege.soldier_status.attributes": "Health: %1$s/%2$s | Armor: %3$s | Toughness: %4$s",
+  "item.kingdomsiege.soldier_core": "Soldier Core",
+  "tooltip.kingdomsiege.soldier_egg.class": "Class: %s",
+  "tooltip.kingdomsiege.soldier_egg.weapon": "Base weapon: %s",
+  "tooltip.kingdomsiege.soldier_egg.chestplate": "Internal chestplate: %s",
+  "tooltip.kingdomsiege.soldier_egg.catalyst": "Catalyst: %s",
+  "tooltip.kingdomsiege.soldier_egg.attack": "Base attack: %s",
+  "tooltip.kingdomsiege.soldier_egg.projectile_damage": "Projectile damage: %s",
+  "tooltip.kingdomsiege.soldier_egg.health": "Final health: %s",
+  "tooltip.kingdomsiege.soldier_egg.defense": "Internal defense: Armor %s | Toughness %s",
+  "message.kingdomsiege.soldier_status.power_melee": "Base attack: %s",
+  "message.kingdomsiege.soldier_status.power_ranged": "Projectile damage: %s",
+  "message.kingdomsiege.soldier_status.territory": "Post: %1$s, %2$s, %3$s | Radius: %4$s",
+  "message.kingdomsiege.soldier_status.territory_undefined": "Post: not defined | Radius: %s"
 }

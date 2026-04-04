@@ -520,6 +520,41 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return Component.translatable(getCatalystType().getTranslationKey());
 	}
 
+	private Component getCombatPowerComponent() {
+		if (canUseBowCombat()) {
+			return Component.translatable(
+					"message.kingdomsiege.soldier_status.power_ranged",
+					formatOneDecimal(soldierBlueprint.getProjectileBaseDamage())
+			);
+		}
+
+		return Component.translatable(
+				"message.kingdomsiege.soldier_status.power_melee",
+				formatOneDecimal(getAttributeValue(Attributes.ATTACK_DAMAGE))
+		);
+	}
+
+	private Component getTerritoryStatusComponent() {
+		if (hasHomePos()) {
+			return Component.translatable(
+					"message.kingdomsiege.soldier_status.territory",
+					homePos.getX(),
+					homePos.getY(),
+					homePos.getZ(),
+					guardRadius
+			);
+		}
+
+		return Component.translatable(
+				"message.kingdomsiege.soldier_status.territory_undefined",
+				guardRadius
+		);
+	}
+
+	private String formatOneDecimal(double value) {
+		return String.format(java.util.Locale.ROOT, "%.1f", value);
+	}
+
 	private void sendBasicStatusTo(Player player) {
 		player.sendSystemMessage(Component.translatable(
 				"message.kingdomsiege.soldier_status.header",
@@ -543,13 +578,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				Math.round(getAttributeValue(Attributes.ARMOR_TOUGHNESS))
 		));
 
-		if (hasHomePos()) {
-			player.sendSystemMessage(Component.literal(
-					"Posto: " + homePos.getX() + ", " + homePos.getY() + ", " + homePos.getZ() + " | Raio: " + guardRadius
-			));
-		} else {
-			player.sendSystemMessage(Component.literal("Posto: não definido | Raio: " + guardRadius));
-		}
+		player.sendSystemMessage(getCombatPowerComponent());
+		player.sendSystemMessage(getTerritoryStatusComponent());
 	}
 
 	@Override
