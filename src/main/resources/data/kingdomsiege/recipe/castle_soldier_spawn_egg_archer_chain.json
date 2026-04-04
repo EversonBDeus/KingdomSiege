@@ -4,7 +4,7 @@
   "ingredients": [
     "kingdomsiege:castle_soldier_spawn_egg",
     "minecraft:bow",
-    "minecraft:leather_chestplate"
+    "minecraft:chainmail_chestplate"
   ],
   "result": {
     "id": "kingdomsiege:castle_soldier_spawn_egg",
@@ -13,7 +13,7 @@
       "kingdomsiege:soldier_class": "archer",
       "kingdomsiege:soldier_blueprint": {
         "soldier_class": "archer",
-        "armor_tier": "leather",
+        "armor_tier": "chain",
         "weapon_class": "bow",
         "catalyst_type": "none"
       }

@@ -2,6 +2,8 @@ package com.eversonbdeus.kingdomsiege.registry;
 
 import com.eversonbdeus.kingdomsiege.KingdomSiege;
 import com.eversonbdeus.kingdomsiege.item.SoldierSpawnEggItem;
+import com.eversonbdeus.kingdomsiege.soldier.ArmorTier;
+import com.eversonbdeus.kingdomsiege.soldier.SoldierBlueprintData;
 import com.eversonbdeus.kingdomsiege.soldier.SoldierClass;
 import net.fabricmc.fabric.api.creativetab.v1.CreativeModeTabEvents;
 import net.minecraft.core.Registry;
@@ -16,7 +18,7 @@ import java.util.function.Function;
 public final class ModItems {
 	public static final Item CASTLE_SOLDIER_SPAWN_EGG = register(
 			"castle_soldier_spawn_egg",
-			properties -> new SoldierSpawnEggItem(SoldierClass.SWORDSMAN, properties),
+			properties -> new SoldierSpawnEggItem(SoldierBlueprintData.defaultRecruit(), properties),
 			new Item.Properties().stacksTo(64).spawnEgg(ModEntities.CASTLE_SOLDIER)
 	);
 
@@ -34,18 +36,23 @@ public final class ModItems {
 		return item;
 	}
 
-	public static ItemStack createConfiguredSoldierEgg(SoldierClass soldierClass) {
+	public static ItemStack createConfiguredSoldierEgg(SoldierBlueprintData blueprint) {
 		ItemStack stack = new ItemStack(CASTLE_SOLDIER_SPAWN_EGG);
-		stack.set(ModComponents.SOLDIER_CLASS, soldierClass);
+		stack.set(ModComponents.SOLDIER_BLUEPRINT, blueprint);
+		stack.set(ModComponents.SOLDIER_CLASS, blueprint.soldierClass());
 		return stack;
 	}
 
+	public static ItemStack createConfiguredSoldierEgg(SoldierClass soldierClass) {
+		return createConfiguredSoldierEgg(SoldierBlueprintData.of(soldierClass, ArmorTier.LEATHER));
+	}
+
 	public static ItemStack createSwordsmanSoldierEgg() {
-		return createConfiguredSoldierEgg(SoldierClass.SWORDSMAN);
+		return createConfiguredSoldierEgg(SoldierBlueprintData.of(SoldierClass.SWORDSMAN, ArmorTier.LEATHER));
 	}
 
 	public static ItemStack createArcherSoldierEgg() {
-		return createConfiguredSoldierEgg(SoldierClass.ARCHER);
+		return createConfiguredSoldierEgg(SoldierBlueprintData.of(SoldierClass.ARCHER, ArmorTier.LEATHER));
 	}
 
 	public static void register() {

@@ -3,18 +3,18 @@
   "category": "misc",
   "ingredients": [
     "kingdomsiege:castle_soldier_spawn_egg",
-    "minecraft:bow",
-    "minecraft:leather_chestplate"
+    "minecraft:iron_sword",
+    "minecraft:iron_chestplate"
   ],
   "result": {
     "id": "kingdomsiege:castle_soldier_spawn_egg",
     "count": 1,
     "components": {
-      "kingdomsiege:soldier_class": "archer",
+      "kingdomsiege:soldier_class": "swordsman",
       "kingdomsiege:soldier_blueprint": {
-        "soldier_class": "archer",
-        "armor_tier": "leather",
-        "weapon_class": "bow",
+        "soldier_class": "swordsman",
+        "armor_tier": "iron",
+        "weapon_class": "sword",
         "catalyst_type": "none"
       }
     }
