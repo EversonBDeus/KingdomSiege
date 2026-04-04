@@ -7,6 +7,8 @@ import com.eversonbdeus.kingdomsiege.soldier.SoldierBlueprintData;
 import com.eversonbdeus.kingdomsiege.soldier.SoldierClass;
 import com.eversonbdeus.kingdomsiege.soldier.SoldierMode;
 import com.eversonbdeus.kingdomsiege.soldier.WeaponClass;
+import com.mojang.serialization.Codec;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
@@ -68,10 +70,13 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final double FOLLOW_MOVE_SPEED = 1.15D;
 	private static final double FOLLOW_REJOIN_DISTANCE = 12.0D;
 	private static final double FOLLOW_REJOIN_DISTANCE_SQR = FOLLOW_REJOIN_DISTANCE * FOLLOW_REJOIN_DISTANCE;
+	private static final int DEFAULT_GUARD_RADIUS = 8;
 
 	private SoldierBlueprintData soldierBlueprint = SoldierBlueprintData.defaultRecruit();
 	private SoldierMode soldierMode = SoldierMode.GUARD;
 	private UUID ownerUuid;
+	private BlockPos homePos;
+	private int guardRadius = DEFAULT_GUARD_RADIUS;
 
 	public CastleSoldierEntity(Level level) {
 		this(ModEntities.CASTLE_SOLDIER, level);
@@ -102,6 +107,39 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		soldierBlueprint = blueprint != null ? blueprint : SoldierBlueprintData.defaultRecruit();
 		refreshDerivedAttributes();
 	}
+
+	public void initializeFromBlueprint(SoldierBlueprintData blueprint, UUID ownerUuid, BlockPos homePos) {
+		applyBlueprint(blueprint);
+		setOwnerUuid(ownerUuid);
+		setHomePos(homePos);
+		setGuardRadius(DEFAULT_GUARD_RADIUS);
+		setSoldierMode(SoldierMode.GUARD);
+	}
+
+	public BlockPos getHomePos() {
+		return homePos;
+	}
+
+	public void setHomePos(BlockPos homePos) {
+		this.homePos = homePos != null ? homePos.immutable() : null;
+	}
+
+	public boolean hasHomePos() {
+		return homePos != null;
+	}
+
+	public void clearHomePos() {
+		homePos = null;
+	}
+
+	public int getGuardRadius() {
+		return guardRadius;
+	}
+
+	public void setGuardRadius(int guardRadius) {
+		this.guardRadius = Math.max(1, guardRadius);
+	}
+
 
 	public SoldierClass getSoldierClass() {
 		return soldierBlueprint.soldierClass();
@@ -504,6 +542,14 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				Math.round(getArmorValue()),
 				Math.round(getAttributeValue(Attributes.ARMOR_TOUGHNESS))
 		));
+
+		if (hasHomePos()) {
+			player.sendSystemMessage(Component.literal(
+					"Posto: " + homePos.getX() + ", " + homePos.getY() + ", " + homePos.getZ() + " | Raio: " + guardRadius
+			));
+		} else {
+			player.sendSystemMessage(Component.literal("Posto: não definido | Raio: " + guardRadius));
+		}
 	}
 
 	@Override
@@ -512,6 +558,10 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		valueOutput.store("SoldierBlueprint", SoldierBlueprintData.CODEC, soldierBlueprint);
 		valueOutput.store("SoldierMode", SoldierMode.CODEC, soldierMode);
 		valueOutput.storeNullable("OwnerUuid", UUIDUtil.STRING_CODEC, ownerUuid);
+		valueOutput.store("GuardRadius", Codec.INT, guardRadius);
+		valueOutput.storeNullable("HomePosX", Codec.INT, homePos != null ? homePos.getX() : null);
+		valueOutput.storeNullable("HomePosY", Codec.INT, homePos != null ? homePos.getY() : null);
+		valueOutput.storeNullable("HomePosZ", Codec.INT, homePos != null ? homePos.getZ() : null);
 	}
 
 	@Override
@@ -520,6 +570,17 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		applyBlueprint(valueInput.read("SoldierBlueprint", SoldierBlueprintData.CODEC).orElse(SoldierBlueprintData.defaultRecruit()));
 		setSoldierMode(valueInput.read("SoldierMode", SoldierMode.CODEC).orElse(SoldierMode.GUARD));
 		setOwnerUuid(valueInput.read("OwnerUuid", UUIDUtil.STRING_CODEC).orElse(null));
+		setGuardRadius(valueInput.read("GuardRadius", Codec.INT).orElse(DEFAULT_GUARD_RADIUS));
+
+		Integer homePosX = valueInput.read("HomePosX", Codec.INT).orElse(null);
+		Integer homePosY = valueInput.read("HomePosY", Codec.INT).orElse(null);
+		Integer homePosZ = valueInput.read("HomePosZ", Codec.INT).orElse(null);
+
+		if (homePosX != null && homePosY != null && homePosZ != null) {
+			setHomePos(new BlockPos(homePosX, homePosY, homePosZ));
+		} else {
+			clearHomePos();
+		}
 	}
 
 	@Override
@@ -555,7 +616,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return super.mobInteract(player, hand);
 	}
 
-	
+
 	@Override
 	public void performRangedAttack(LivingEntity target, float velocity) {
 		if (!canUseBowCombat() || !isValidCombatTarget(target)) {
