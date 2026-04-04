@@ -57,6 +57,12 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final double INHERITED_PROTECTION_REDUCTION_PER_LEVEL = 0.04D;
 	private static final double INHERITED_SPECIAL_PROTECTION_REDUCTION_PER_LEVEL = 0.08D;
 	private static final float THORNS_CHANCE_PER_LEVEL = 0.15F;
+	private static final double INHERITED_SHARPNESS_DAMAGE_PER_LEVEL = 0.5D;
+	private static final double INHERITED_SHARPNESS_BASE_BONUS = 0.5D;
+	private static final int FIRE_ASPECT_SECONDS_PER_LEVEL = 4;
+	private static final double KNOCKBACK_STRENGTH_PER_LEVEL = 0.5D;
+	private static final double INHERITED_POWER_DAMAGE_PER_LEVEL = 0.5D;
+	private static final double INHERITED_POWER_BASE_BONUS = 0.5D;
 
 	private static final double SWORDSMAN_MELEE_SPEED = 1.15D;
 
@@ -164,7 +170,13 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				currentBlueprint.inheritedProjectileProtectionLevel(),
 				currentBlueprint.inheritedBlastProtectionLevel(),
 				currentBlueprint.inheritedFireProtectionLevel(),
-				currentBlueprint.inheritedThornsLevel()
+				currentBlueprint.inheritedThornsLevel(),
+				currentBlueprint.inheritedSharpnessLevel(),
+				currentBlueprint.inheritedFireAspectLevel(),
+				currentBlueprint.inheritedKnockbackLevel(),
+				currentBlueprint.inheritedPowerLevel(),
+				currentBlueprint.inheritedPunchLevel(),
+				currentBlueprint.inheritedFlameLevel()
 		));
 	}
 
@@ -324,6 +336,48 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 
 		return damaged;
+	}
+
+	@Override
+	public boolean doHurtTarget(ServerLevel serverLevel, Entity target) {
+		boolean damaged = super.doHurtTarget(serverLevel, target);
+
+		if (!damaged || !(target instanceof LivingEntity livingTarget)) {
+			return damaged;
+		}
+
+		applyInheritedMeleeEnchantments(livingTarget);
+		return true;
+	}
+
+	private void applyInheritedMeleeEnchantments(LivingEntity livingTarget) {
+		applyInheritedFireAspect(livingTarget);
+		applyInheritedKnockback(livingTarget);
+	}
+
+	private void applyInheritedFireAspect(LivingEntity livingTarget) {
+		int fireAspectLevel = soldierBlueprint.inheritedFireAspectLevel();
+
+		if (fireAspectLevel <= 0) {
+			return;
+		}
+
+		livingTarget.setRemainingFireTicks(fireAspectLevel * FIRE_ASPECT_SECONDS_PER_LEVEL * 20);
+	}
+
+	private void applyInheritedKnockback(LivingEntity livingTarget) {
+		int knockbackLevel = soldierBlueprint.inheritedKnockbackLevel();
+
+		if (knockbackLevel <= 0) {
+			return;
+		}
+
+		double yawRadians = Math.toRadians(getYRot());
+		livingTarget.knockback(
+				knockbackLevel * KNOCKBACK_STRENGTH_PER_LEVEL,
+				Math.sin(yawRadians),
+				-Math.cos(yawRadians)
+		);
 	}
 
 	private boolean isFriendlyDamageSource(DamageSource damageSource) {
@@ -516,7 +570,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		float previousHealth = getHealth();
 
 		setBaseAttribute(Attributes.MAX_HEALTH, BASE_MAX_HEALTH + soldierBlueprint.getBonusHealth());
-		setBaseAttribute(Attributes.ATTACK_DAMAGE, soldierBlueprint.getBaseAttackDamage());
+		setBaseAttribute(Attributes.ATTACK_DAMAGE, getEffectiveMeleeAttackDamage());
 		setBaseAttribute(Attributes.ARMOR, BASE_ARMOR + soldierBlueprint.getArmorBonus());
 		setBaseAttribute(Attributes.ARMOR_TOUGHNESS, BASE_ARMOR_TOUGHNESS + soldierBlueprint.getToughnessBonus());
 		setBaseAttribute(Attributes.KNOCKBACK_RESISTANCE, BASE_KNOCKBACK_RESISTANCE + soldierBlueprint.getKnockbackResistanceBonus());
@@ -575,6 +629,34 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		setDropChance(EquipmentSlot.CHEST, 0.0F);
 	}
 
+	private double getEffectiveMeleeAttackDamage() {
+		return soldierBlueprint.getBaseAttackDamage() + getInheritedSharpnessBonus();
+	}
+
+	private double getInheritedSharpnessBonus() {
+		int sharpnessLevel = soldierBlueprint.inheritedSharpnessLevel();
+
+		if (sharpnessLevel <= 0) {
+			return 0.0D;
+		}
+
+		return INHERITED_SHARPNESS_BASE_BONUS + sharpnessLevel * INHERITED_SHARPNESS_DAMAGE_PER_LEVEL;
+	}
+
+	private double getEffectiveProjectileBaseDamage() {
+		return soldierBlueprint.getProjectileBaseDamage() + getInheritedPowerBonus();
+	}
+
+	private double getInheritedPowerBonus() {
+		int powerLevel = soldierBlueprint.inheritedPowerLevel();
+
+		if (powerLevel <= 0) {
+			return 0.0D;
+		}
+
+		return INHERITED_POWER_BASE_BONUS + powerLevel * INHERITED_POWER_DAMAGE_PER_LEVEL;
+	}
+
 	private Component getArmorTierComponent() {
 		return soldierBlueprint.chestplateStack().isEmpty()
 				? Component.translatable(getArmorTier().getTranslationKey())
@@ -595,7 +677,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		if (canUseBowCombat()) {
 			return Component.translatable(
 					"message.kingdomsiege.soldier_status.power_ranged",
-					formatOneDecimal(soldierBlueprint.getProjectileBaseDamage())
+					formatOneDecimal(getEffectiveProjectileBaseDamage())
 			);
 		}
 
@@ -605,12 +687,20 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		);
 	}
 
-	private Component getInheritedEnchantmentsComponent() {
+	private Component getInheritedChestplateEnchantmentsComponent() {
 		if (!soldierBlueprint.hasInheritedChestplateEnchantments()) {
 			return null;
 		}
 
 		return Component.literal("Heranças do peitoral: " + soldierBlueprint.getInheritedChestplateEnchantmentsSummary());
+	}
+
+	private Component getInheritedWeaponEnchantmentsComponent() {
+		if (!soldierBlueprint.hasInheritedWeaponEnchantments()) {
+			return null;
+		}
+
+		return Component.literal("Heranças da arma: " + soldierBlueprint.getInheritedWeaponEnchantmentsSummary());
 	}
 
 	private Component getTerritoryStatusComponent() {
@@ -659,9 +749,14 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		player.sendSystemMessage(getCombatPowerComponent());
 
-		Component inheritedEnchantmentsComponent = getInheritedEnchantmentsComponent();
-		if (inheritedEnchantmentsComponent != null) {
-			player.sendSystemMessage(inheritedEnchantmentsComponent);
+		Component inheritedChestplateEnchantmentsComponent = getInheritedChestplateEnchantmentsComponent();
+		if (inheritedChestplateEnchantmentsComponent != null) {
+			player.sendSystemMessage(inheritedChestplateEnchantmentsComponent);
+		}
+
+		Component inheritedWeaponEnchantmentsComponent = getInheritedWeaponEnchantmentsComponent();
+		if (inheritedWeaponEnchantmentsComponent != null) {
+			player.sendSystemMessage(inheritedWeaponEnchantmentsComponent);
 		}
 
 		player.sendSystemMessage(getTerritoryStatusComponent());
@@ -750,7 +845,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		double deltaZ = target.getZ() - getZ();
 		double horizontalDistance = Math.sqrt(deltaX * deltaX + deltaZ * deltaZ);
 
-		arrow.setBaseDamage(soldierBlueprint.getProjectileBaseDamage());
+		arrow.setBaseDamage(getEffectiveProjectileBaseDamage());
 		arrow.shoot(deltaX, deltaY + horizontalDistance * 0.2D, deltaZ, velocity, 8.0F);
 
 		playSound(SoundEvents.SKELETON_SHOOT, 1.0F, 1.0F / (getRandom().nextFloat() * 0.4F + 0.8F));
