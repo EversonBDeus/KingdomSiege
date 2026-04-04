@@ -108,11 +108,16 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	}
 
 	public void setSoldierClass(SoldierClass soldierClass) {
+		SoldierBlueprintData currentBlueprint = getSoldierBlueprint();
+		SoldierBlueprintData defaultBlueprint = SoldierBlueprintData.of(soldierClass, getArmorTier());
+
 		applyBlueprint(new SoldierBlueprintData(
 				soldierClass,
 				getArmorTier(),
 				WeaponClass.fromSoldierClass(soldierClass),
-				getCatalystType()
+				getCatalystType(),
+				defaultBlueprint.weaponStack(),
+				currentBlueprint.chestplateStack()
 		));
 	}
 
@@ -398,15 +403,36 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	}
 
 	private void refreshDerivedAttributes() {
+		double previousMaxHealth = getAttributeValue(Attributes.MAX_HEALTH);
+		float previousHealth = getHealth();
+
 		setBaseAttribute(Attributes.MAX_HEALTH, BASE_MAX_HEALTH + soldierBlueprint.getBonusHealth());
+		setBaseAttribute(Attributes.ATTACK_DAMAGE, soldierBlueprint.getBaseAttackDamage());
 		setBaseAttribute(Attributes.ARMOR, BASE_ARMOR + soldierBlueprint.getArmorBonus());
 		setBaseAttribute(Attributes.ARMOR_TOUGHNESS, BASE_ARMOR_TOUGHNESS + soldierBlueprint.getToughnessBonus());
 		setBaseAttribute(Attributes.KNOCKBACK_RESISTANCE, BASE_KNOCKBACK_RESISTANCE + soldierBlueprint.getKnockbackResistanceBonus());
-		refreshVisualWeapon();
 
-		if (isAlive()) {
-			setHealth(getMaxHealth());
+		refreshVisualWeapon();
+		refreshHealthAfterBlueprintChange(previousMaxHealth, previousHealth);
+	}
+
+	private void refreshHealthAfterBlueprintChange(double previousMaxHealth, float previousHealth) {
+		if (!isAlive()) {
+			return;
 		}
+
+		double resolvedPreviousMaxHealth = previousMaxHealth > 0.0D ? previousMaxHealth : BASE_MAX_HEALTH;
+		double healthRatio = previousHealth > 0.0F ? previousHealth / resolvedPreviousMaxHealth : 1.0D;
+
+		if (healthRatio < 0.0D) {
+			healthRatio = 0.0D;
+		}
+
+		if (healthRatio > 1.0D) {
+			healthRatio = 1.0D;
+		}
+
+		setHealth((float) (getMaxHealth() * healthRatio));
 	}
 
 	private void setBaseAttribute(net.minecraft.core.Holder<net.minecraft.world.entity.ai.attributes.Attribute> attribute, double value) {
@@ -418,22 +444,38 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	}
 
 	private void refreshVisualWeapon() {
-		ItemStack mainHandStack = switch (getWeaponClass()) {
+		ItemStack mainHandStack = soldierBlueprint.weaponStack().isEmpty()
+				? switch (getWeaponClass()) {
 			case BOW -> new ItemStack(Items.BOW);
 			case SWORD -> new ItemStack(Items.IRON_SWORD);
 			default -> ItemStack.EMPTY;
-		};
+		}
+				: soldierBlueprint.weaponStack().copy();
+
+		if (!mainHandStack.isEmpty()) {
+			mainHandStack.setCount(1);
+		}
 
 		setItemSlot(EquipmentSlot.MAINHAND, mainHandStack);
+
+		// Nesta etapa o peitoral deixa de ser equipamento visual padrão.
+		// O peitoral continua salvo no blueprint e passa a servir como defesa interna.
+		setItemSlot(EquipmentSlot.CHEST, ItemStack.EMPTY);
+
 		setDropChance(EquipmentSlot.MAINHAND, 0.0F);
+		setDropChance(EquipmentSlot.CHEST, 0.0F);
 	}
 
 	private Component getArmorTierComponent() {
-		return Component.translatable(getArmorTier().getTranslationKey());
+		return soldierBlueprint.chestplateStack().isEmpty()
+				? Component.translatable(getArmorTier().getTranslationKey())
+				: soldierBlueprint.chestplateStack().getHoverName();
 	}
 
 	private Component getWeaponClassComponent() {
-		return Component.translatable(getWeaponClass().getTranslationKey());
+		return soldierBlueprint.weaponStack().isEmpty()
+				? Component.translatable(getWeaponClass().getTranslationKey())
+				: soldierBlueprint.weaponStack().getHoverName();
 	}
 
 	private Component getCatalystComponent() {
@@ -460,7 +502,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				Math.round(getHealth()),
 				Math.round(getMaxHealth()),
 				Math.round(getArmorValue()),
-				Math.round(getArmorTier().getToughnessBonus())
+				Math.round(getAttributeValue(Attributes.ARMOR_TOUGHNESS))
 		));
 	}
 
@@ -513,6 +555,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return super.mobInteract(player, hand);
 	}
 
+	
 	@Override
 	public void performRangedAttack(LivingEntity target, float velocity) {
 		if (!canUseBowCombat() || !isValidCombatTarget(target)) {
@@ -520,7 +563,9 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 
 		ItemStack arrowStack = new ItemStack(Items.ARROW);
-		ItemStack weaponStack = new ItemStack(Items.BOW);
+		ItemStack weaponStack = soldierBlueprint.weaponStack().isEmpty()
+				? new ItemStack(Items.BOW)
+				: soldierBlueprint.weaponStack().copy();
 
 		Arrow arrow = new Arrow(level(), this, arrowStack, weaponStack);
 
@@ -529,7 +574,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		double deltaZ = target.getZ() - getZ();
 		double horizontalDistance = Math.sqrt(deltaX * deltaX + deltaZ * deltaZ);
 
-		arrow.setBaseDamage(ARCHER_ARROW_DAMAGE);
+		arrow.setBaseDamage(soldierBlueprint.getProjectileBaseDamage());
 		arrow.shoot(deltaX, deltaY + horizontalDistance * 0.2D, deltaZ, velocity, 8.0F);
 
 		playSound(SoundEvents.SKELETON_SHOOT, 1.0F, 1.0F / (getRandom().nextFloat() * 0.4F + 0.8F));

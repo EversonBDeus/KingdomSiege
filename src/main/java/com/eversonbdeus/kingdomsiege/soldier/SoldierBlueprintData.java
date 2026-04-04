@@ -13,6 +13,9 @@ public record SoldierBlueprintData(
 		ItemStack weaponStack,
 		ItemStack chestplateStack
 ) {
+	private static final double DEFAULT_ARCHER_PROJECTILE_DAMAGE = 2.5D;
+	private static final double DEFAULT_ARCHER_MELEE_DAMAGE = 1.0D;
+
 	public static final Codec<SoldierBlueprintData> CODEC = RecordCodecBuilder.create(instance -> instance.group(
 			SoldierClass.CODEC.fieldOf("soldier_class").forGetter(SoldierBlueprintData::soldierClass),
 			ArmorTier.CODEC.fieldOf("armor_tier").forGetter(SoldierBlueprintData::armorTier),
@@ -44,12 +47,12 @@ public record SoldierBlueprintData(
 
 	public static SoldierBlueprintData of(SoldierClass soldierClass, ArmorTier armorTier) {
 		return new SoldierBlueprintData(
-				 soldierClass,
-				 armorTier,
-				 WeaponClass.fromSoldierClass(soldierClass),
-				 CatalystType.NONE,
-				 defaultWeaponStack(soldierClass),
-				 defaultChestplateStack(armorTier)
+				soldierClass,
+				armorTier,
+				WeaponClass.fromSoldierClass(soldierClass),
+				CatalystType.NONE,
+				defaultWeaponStack(soldierClass),
+				defaultChestplateStack(armorTier)
 		);
 	}
 
@@ -77,6 +80,70 @@ public record SoldierBlueprintData(
 				sanitizeCraftBowStack(bowStack),
 				sanitizeCraftChestplateStack(chestplateStack)
 		);
+	}
+
+	public double getBaseAttackDamage() {
+		if (weaponClass == WeaponClass.BOW) {
+			return DEFAULT_ARCHER_MELEE_DAMAGE;
+		}
+
+		return resolveSwordAttackDamage(weaponStack);
+	}
+
+	public double getProjectileBaseDamage() {
+		if (weaponClass != WeaponClass.BOW) {
+			return 0.0D;
+		}
+
+		return DEFAULT_ARCHER_PROJECTILE_DAMAGE;
+	}
+
+	public double getBonusHealth() {
+		return armorTier.getBonusHealth();
+	}
+
+	public double getArmorBonus() {
+		return armorTier.getArmorBonus();
+	}
+
+	public double getToughnessBonus() {
+		return armorTier.getToughnessBonus();
+	}
+
+	public double getKnockbackResistanceBonus() {
+		return armorTier.getKnockbackResistanceBonus();
+	}
+
+	private static double resolveSwordAttackDamage(ItemStack stack) {
+		if (stack == null || stack.isEmpty()) {
+			return 6.0D;
+		}
+
+		if (stack.is(Items.WOODEN_SWORD)) {
+			return 4.0D;
+		}
+
+		if (stack.is(Items.STONE_SWORD)) {
+			return 5.0D;
+		}
+
+		if (stack.is(Items.IRON_SWORD)) {
+			return 6.0D;
+		}
+
+		if (stack.is(Items.GOLDEN_SWORD)) {
+			return 4.0D;
+		}
+
+		if (stack.is(Items.DIAMOND_SWORD)) {
+			return 7.0D;
+		}
+
+		if (stack.is(Items.NETHERITE_SWORD)) {
+			return 8.0D;
+		}
+
+		return 6.0D;
 	}
 
 	private static ItemStack sanitizeStoredStack(ItemStack stack) {
@@ -135,21 +202,5 @@ public record SoldierBlueprintData(
 			case NETHERITE -> new ItemStack(Items.NETHERITE_CHESTPLATE);
 			case LEATHER -> new ItemStack(Items.LEATHER_CHESTPLATE);
 		};
-	}
-
-	public double getBonusHealth() {
-		return armorTier.getBonusHealth();
-	}
-
-	public double getArmorBonus() {
-		return armorTier.getArmorBonus();
-	}
-
-	public double getToughnessBonus() {
-		return armorTier.getToughnessBonus();
-	}
-
-	public double getKnockbackResistanceBonus() {
-		return armorTier.getKnockbackResistanceBonus();
 	}
 }
