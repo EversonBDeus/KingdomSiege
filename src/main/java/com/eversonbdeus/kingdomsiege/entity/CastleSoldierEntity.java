@@ -2,7 +2,9 @@ package com.eversonbdeus.kingdomsiege.entity;
 
 import com.eversonbdeus.kingdomsiege.registry.ModEntities;
 import com.eversonbdeus.kingdomsiege.soldier.SoldierClass;
+import com.eversonbdeus.kingdomsiege.soldier.SoldierDefenseProfile;
 import com.eversonbdeus.kingdomsiege.soldier.SoldierMode;
+import com.mojang.serialization.Codec;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
@@ -12,8 +14,10 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
@@ -41,6 +45,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final double BASE_MOVEMENT_SPEED = 0.28D;
 	private static final double BASE_ATTACK_DAMAGE = 4.0D;
 	private static final double BASE_FOLLOW_RANGE = 16.0D;
+	private static final double BASE_MAX_HEALTH = 20.0D;
+	private static final double BASE_ARMOR = 0.0D;
 
 	private static final double SWORDSMAN_MELEE_SPEED = 1.15D;
 
@@ -61,7 +67,10 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	private SoldierClass soldierClass = SoldierClass.SWORDSMAN;
 	private SoldierMode soldierMode = SoldierMode.GUARD;
+	private SoldierDefenseProfile defenseProfile = SoldierDefenseProfile.UNARMORED;
 	private UUID ownerUuid;
+	private int defenseDurability;
+	private int defenseMaxDurability;
 
 	public CastleSoldierEntity(Level level) {
 		this(ModEntities.CASTLE_SOLDIER, level);
@@ -74,10 +83,11 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	public static AttributeSupplier.Builder createAttributes() {
 		return PathfinderMob.createMobAttributes()
-				.add(Attributes.MAX_HEALTH, 20.0D)
+				.add(Attributes.MAX_HEALTH, BASE_MAX_HEALTH)
 				.add(Attributes.MOVEMENT_SPEED, BASE_MOVEMENT_SPEED)
 				.add(Attributes.ATTACK_DAMAGE, BASE_ATTACK_DAMAGE)
-				.add(Attributes.FOLLOW_RANGE, BASE_FOLLOW_RANGE);
+				.add(Attributes.FOLLOW_RANGE, BASE_FOLLOW_RANGE)
+				.add(Attributes.ARMOR, BASE_ARMOR);
 	}
 
 	public SoldierClass getSoldierClass() {
@@ -86,6 +96,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	public void setSoldierClass(SoldierClass soldierClass) {
 		this.soldierClass = soldierClass != null ? soldierClass : SoldierClass.SWORDSMAN;
+		refreshDerivedAttributes();
 	}
 
 	public SoldierMode getSoldierMode() {
@@ -134,6 +145,18 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	public void setOwnerUuid(UUID ownerUuid) {
 		this.ownerUuid = ownerUuid;
+	}
+
+	public SoldierDefenseProfile getDefenseProfile() {
+		return defenseProfile;
+	}
+
+	public int getDefenseDurability() {
+		return defenseDurability;
+	}
+
+	public int getDefenseMaxDurability() {
+		return defenseMaxDurability;
 	}
 
 	public boolean hasOwner() {
@@ -219,7 +242,13 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			return false;
 		}
 
-		return super.hurtServer(serverLevel, damageSource, amount);
+		boolean hurt = super.hurtServer(serverLevel, damageSource, amount);
+
+		if (hurt) {
+			consumeDefenseDurability(amount);
+		}
+
+		return hurt;
 	}
 
 	private boolean isFriendlyDamageSource(DamageSource damageSource) {
@@ -354,6 +383,9 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		super.addAdditionalSaveData(valueOutput);
 		valueOutput.store("SoldierClass", SoldierClass.CODEC, soldierClass);
 		valueOutput.store("SoldierMode", SoldierMode.CODEC, soldierMode);
+		valueOutput.store("DefenseProfile", SoldierDefenseProfile.CODEC, defenseProfile);
+		valueOutput.store("DefenseDurability", Codec.INT, defenseDurability);
+		valueOutput.store("DefenseMaxDurability", Codec.INT, defenseMaxDurability);
 		valueOutput.storeNullable("OwnerUuid", UUIDUtil.STRING_CODEC, ownerUuid);
 	}
 
@@ -362,7 +394,11 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		super.readAdditionalSaveData(valueInput);
 		setSoldierClass(valueInput.read("SoldierClass", SoldierClass.CODEC).orElse(SoldierClass.SWORDSMAN));
 		setSoldierMode(valueInput.read("SoldierMode", SoldierMode.CODEC).orElse(SoldierMode.GUARD));
+		defenseProfile = valueInput.read("DefenseProfile", SoldierDefenseProfile.CODEC).orElse(SoldierDefenseProfile.UNARMORED);
+		defenseDurability = valueInput.read("DefenseDurability", Codec.INT).orElse(0);
+		defenseMaxDurability = valueInput.read("DefenseMaxDurability", Codec.INT).orElse(0);
 		setOwnerUuid(valueInput.read("OwnerUuid", UUIDUtil.STRING_CODEC).orElse(null));
+		refreshDerivedAttributes();
 	}
 
 	@Override
@@ -371,18 +407,38 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			return InteractionResult.PASS;
 		}
 
-		if (!isOwnedBy(player) || !player.isShiftKeyDown()) {
+		if (!isOwnedBy(player)) {
 			return super.mobInteract(player, hand);
 		}
 
-		if (!level().isClientSide()) {
-			toggleSoldierMode();
+		ItemStack heldStack = player.getItemInHand(hand);
 
-			String modeName = isFollowMode() ? "SEGUIR" : "GUARDAR";
-			player.sendSystemMessage(Component.literal("Modo do soldado: " + modeName));
+		if (isSupportedEquipmentItem(heldStack)) {
+			if (!level().isClientSide()) {
+				handleEquipmentInteraction(player, heldStack);
+			}
+
+			return InteractionResult.SUCCESS;
 		}
 
-		return InteractionResult.SUCCESS;
+		if (heldStack.isEmpty() && player.isShiftKeyDown()) {
+			if (!level().isClientSide()) {
+				toggleSoldierMode();
+				player.sendSystemMessage(Component.translatable("message.kingdomsiege.soldier_mode_changed", Component.translatable(getSoldierMode().getTranslationKey())));
+			}
+
+			return InteractionResult.SUCCESS;
+		}
+
+		if (heldStack.isEmpty()) {
+			if (!level().isClientSide()) {
+				sendStatusReport(player);
+			}
+
+			return InteractionResult.SUCCESS;
+		}
+
+		return super.mobInteract(player, hand);
 	}
 
 	@Override
@@ -391,8 +447,9 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			return;
 		}
 
-		ItemStack arrowStack = new ItemStack(Items.ARROW);
-		ItemStack weaponStack = new ItemStack(Items.BOW);
+		ItemStack arrowSource = getArrowSource();
+		ItemStack arrowStack = arrowSource.isEmpty() ? new ItemStack(Items.ARROW) : arrowSource.copyWithCount(1);
+		ItemStack weaponStack = hasEquippedBow() ? getMainHandItem() : new ItemStack(Items.BOW);
 
 		Arrow arrow = new Arrow(level(), this, arrowStack, weaponStack);
 
@@ -406,6 +463,294 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		playSound(SoundEvents.SKELETON_SHOOT, 1.0F, 1.0F / (getRandom().nextFloat() * 0.4F + 0.8F));
 		level().addFreshEntity(arrow);
+
+		consumeArrow();
+	}
+
+	private boolean isSupportedEquipmentItem(ItemStack stack) {
+		return isSupportedWeaponItem(stack) || isSupportedAmmoItem(stack) || isSupportedDefenseItem(stack);
+	}
+
+	private boolean isSupportedWeaponItem(ItemStack stack) {
+		if (stack == null || stack.isEmpty()) {
+			return false;
+		}
+
+		if (isSwordsman()) {
+			return isSupportedSwordsmanWeapon(stack);
+		}
+
+		if (isArcher()) {
+			return stack.is(Items.BOW);
+		}
+
+		return false;
+	}
+
+	private boolean isSupportedSwordsmanWeapon(ItemStack stack) {
+		return stack.is(Items.WOODEN_SWORD)
+				|| stack.is(Items.STONE_SWORD)
+				|| stack.is(Items.IRON_SWORD)
+				|| stack.is(Items.GOLDEN_SWORD)
+				|| stack.is(Items.DIAMOND_SWORD)
+				|| stack.is(Items.NETHERITE_SWORD);
+	}
+
+	private boolean isSupportedAmmoItem(ItemStack stack) {
+		return isArcher() && stack != null && !stack.isEmpty() && stack.is(Items.ARROW);
+	}
+
+	private boolean isSupportedDefenseItem(ItemStack stack) {
+		return SoldierDefenseProfile.fromChestplate(stack) != SoldierDefenseProfile.UNARMORED;
+	}
+
+	private void handleEquipmentInteraction(Player player, ItemStack heldStack) {
+		if (isSupportedWeaponItem(heldStack)) {
+			equipWeaponFromOwner(player, heldStack);
+			return;
+		}
+
+		if (isSupportedAmmoItem(heldStack)) {
+			equipAmmoFromOwner(player, heldStack);
+			return;
+		}
+
+		if (isSupportedDefenseItem(heldStack)) {
+			equipDefenseFromOwner(player, heldStack);
+		}
+	}
+
+	private void equipWeaponFromOwner(Player player, ItemStack heldStack) {
+		ItemStack equippedStack = heldStack.copyWithCount(1);
+		ItemStack previousWeapon = getMainHandItem().copy();
+
+		setItemSlot(EquipmentSlot.MAINHAND, equippedStack);
+		refreshDerivedAttributes();
+
+		if (!player.isCreative()) {
+			heldStack.shrink(1);
+		}
+
+		returnItemToOwner(player, previousWeapon);
+		player.sendSystemMessage(Component.translatable("message.kingdomsiege.soldier_weapon_equipped", equippedStack.getHoverName()));
+	}
+
+	private void equipAmmoFromOwner(Player player, ItemStack heldStack) {
+		ItemStack currentAmmo = getOffhandItem();
+		int maxStackSize = heldStack.getMaxStackSize();
+		int transferAmount;
+
+		if (currentAmmo.isEmpty()) {
+			transferAmount = Math.min(heldStack.getCount(), maxStackSize);
+			setItemSlot(EquipmentSlot.OFFHAND, heldStack.copyWithCount(transferAmount));
+		} else if (currentAmmo.is(Items.ARROW)) {
+			int availableSpace = maxStackSize - currentAmmo.getCount();
+			transferAmount = Math.min(heldStack.getCount(), availableSpace);
+
+			if (transferAmount <= 0) {
+				player.sendSystemMessage(Component.translatable("message.kingdomsiege.soldier_ammo_full"));
+				return;
+			}
+
+			currentAmmo.grow(transferAmount);
+		} else {
+			player.sendSystemMessage(Component.translatable("message.kingdomsiege.soldier_ammo_slot_busy"));
+			return;
+		}
+
+		if (!player.isCreative()) {
+			heldStack.shrink(transferAmount);
+		}
+
+		player.sendSystemMessage(Component.translatable("message.kingdomsiege.soldier_ammo_equipped", getAmmoCount()));
+	}
+
+	private void equipDefenseFromOwner(Player player, ItemStack heldStack) {
+		SoldierDefenseProfile newProfile = SoldierDefenseProfile.fromChestplate(heldStack);
+
+		defenseProfile = newProfile;
+		defenseMaxDurability = heldStack.getMaxDamage();
+		defenseDurability = Math.max(0, defenseMaxDurability - heldStack.getDamageValue());
+		refreshDerivedAttributes();
+
+		if (!player.isCreative()) {
+			heldStack.shrink(1);
+		}
+
+		player.sendSystemMessage(Component.translatable("message.kingdomsiege.soldier_defense_equipped", Component.translatable(defenseProfile.getTranslationKey())));
+	}
+
+	private void returnItemToOwner(Player player, ItemStack stack) {
+		if (stack == null || stack.isEmpty()) {
+			return;
+		}
+
+		if (!player.getInventory().add(stack)) {
+			player.drop(stack, false);
+		}
+	}
+
+	private void sendStatusReport(Player player) {
+		player.sendSystemMessage(Component.translatable(
+				"message.kingdomsiege.soldier_status.header",
+				getDisplayName(),
+				Component.translatable(soldierClass.getTranslationKey()),
+				Component.translatable(soldierMode.getTranslationKey())
+		));
+		player.sendSystemMessage(Component.translatable(
+				"message.kingdomsiege.soldier_status.health",
+				Math.round(getHealth()),
+				Math.round(getMaxHealth())
+		));
+		player.sendSystemMessage(Component.translatable(
+				"message.kingdomsiege.soldier_status.weapon",
+				getWeaponStatusComponent(),
+				getDurabilityStatusComponent(getMainHandItem())
+		));
+		player.sendSystemMessage(Component.translatable(
+				"message.kingdomsiege.soldier_status.defense",
+				Component.translatable(defenseProfile.getTranslationKey()),
+				Math.round(getArmorValue()),
+				getDefenseDurabilityStatusComponent()
+		));
+
+		if (isArcher()) {
+			player.sendSystemMessage(Component.translatable(
+					"message.kingdomsiege.soldier_status.ammo",
+					getAmmoStatusComponent()
+			));
+		}
+	}
+
+	private Component getWeaponStatusComponent() {
+		ItemStack weaponStack = getMainHandItem();
+
+		if (!weaponStack.isEmpty()) {
+			return weaponStack.getHoverName();
+		}
+
+		if (isArcher()) {
+			return Component.translatable("message.kingdomsiege.soldier_weapon_default_archer");
+		}
+
+		return Component.translatable("message.kingdomsiege.soldier_weapon_default_swordsman");
+	}
+
+	private Component getDurabilityStatusComponent(ItemStack stack) {
+		if (stack == null || stack.isEmpty() || !stack.isDamageableItem()) {
+			return Component.translatable("message.kingdomsiege.soldier_status.none");
+		}
+
+		int currentDurability = Math.max(0, stack.getMaxDamage() - stack.getDamageValue());
+		return Component.translatable("message.kingdomsiege.soldier_status.durability_value", currentDurability, stack.getMaxDamage());
+	}
+
+	private Component getDefenseDurabilityStatusComponent() {
+		if (defenseMaxDurability <= 0) {
+			return Component.translatable("message.kingdomsiege.soldier_status.none");
+		}
+
+		return Component.translatable("message.kingdomsiege.soldier_status.durability_value", defenseDurability, defenseMaxDurability);
+	}
+
+	private Component getAmmoStatusComponent() {
+		ItemStack ammoStack = getArrowSource();
+
+		if (ammoStack.isEmpty()) {
+			return Component.translatable("message.kingdomsiege.soldier_status.ammo_default");
+		}
+
+		return Component.literal(String.valueOf(ammoStack.getCount()));
+	}
+
+	private ItemStack getArrowSource() {
+		ItemStack offhandItem = getOffhandItem();
+		return offhandItem.is(Items.ARROW) ? offhandItem : ItemStack.EMPTY;
+	}
+
+	private int getAmmoCount() {
+		ItemStack ammoStack = getArrowSource();
+		return ammoStack.isEmpty() ? 0 : ammoStack.getCount();
+	}
+
+	private boolean hasEquippedBow() {
+		return getMainHandItem().is(Items.BOW);
+	}
+
+	private void consumeArrow() {
+		ItemStack ammoStack = getArrowSource();
+
+		if (ammoStack.isEmpty()) {
+			return;
+		}
+
+		ammoStack.shrink(1);
+
+		if (ammoStack.isEmpty()) {
+			setItemSlot(EquipmentSlot.OFFHAND, ItemStack.EMPTY);
+		}
+	}
+
+	private void consumeDefenseDurability(float damageAmount) {
+		if (defenseMaxDurability <= 0 || defenseDurability <= 0 || damageAmount <= 0.0F) {
+			return;
+		}
+
+		defenseDurability = Math.max(0, defenseDurability - Math.max(1, Math.round(damageAmount)));
+
+		if (defenseDurability == 0) {
+			defenseProfile = SoldierDefenseProfile.UNARMORED;
+			defenseMaxDurability = 0;
+			refreshDerivedAttributes();
+		}
+	}
+
+	private void refreshDerivedAttributes() {
+		double previousMaxHealth = getMaxHealth();
+		double newMaxHealth = BASE_MAX_HEALTH + defenseProfile.getExtraHealth();
+		setBaseAttributeValue(Attributes.MAX_HEALTH, newMaxHealth);
+		setBaseAttributeValue(Attributes.ARMOR, defenseProfile.getArmorBonus());
+		setBaseAttributeValue(Attributes.ATTACK_DAMAGE, BASE_ATTACK_DAMAGE + getWeaponAttackBonus());
+
+		if (getHealth() > newMaxHealth) {
+			setHealth((float) newMaxHealth);
+		} else if (newMaxHealth > previousMaxHealth) {
+			setHealth(Math.min((float) newMaxHealth, getHealth() + (float) (newMaxHealth - previousMaxHealth)));
+		}
+	}
+
+	private void setBaseAttributeValue(net.minecraft.core.Holder<net.minecraft.world.entity.ai.attributes.Attribute> attribute, double value) {
+		AttributeInstance instance = getAttribute(attribute);
+
+		if (instance != null) {
+			instance.setBaseValue(value);
+		}
+	}
+
+	private double getWeaponAttackBonus() {
+		ItemStack weaponStack = getMainHandItem();
+
+		if (weaponStack.is(Items.WOODEN_SWORD) || weaponStack.is(Items.GOLDEN_SWORD)) {
+			return 1.0D;
+		}
+
+		if (weaponStack.is(Items.STONE_SWORD)) {
+			return 2.0D;
+		}
+
+		if (weaponStack.is(Items.IRON_SWORD)) {
+			return 3.0D;
+		}
+
+		if (weaponStack.is(Items.DIAMOND_SWORD)) {
+			return 4.0D;
+		}
+
+		if (weaponStack.is(Items.NETHERITE_SWORD)) {
+			return 5.0D;
+		}
+
+		return 0.0D;
 	}
 
 	private static final class ProtectOwnerWhenHurtGoal extends Goal {
