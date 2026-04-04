@@ -8,6 +8,7 @@ import com.eversonbdeus.kingdomsiege.soldier.SoldierClass;
 import com.eversonbdeus.kingdomsiege.soldier.SoldierMode;
 import com.eversonbdeus.kingdomsiege.soldier.WeaponClass;
 import com.mojang.serialization.Codec;
+import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.network.chat.Component;
@@ -43,7 +44,9 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.UUID;
 
 public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMob {
@@ -687,20 +690,148 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		);
 	}
 
-	private Component getInheritedChestplateEnchantmentsComponent() {
+	private List<Component> getInheritedChestplateEnchantmentsComponents() {
+		List<Component> components = new ArrayList<>();
+
 		if (!soldierBlueprint.hasInheritedChestplateEnchantments()) {
-			return null;
+			return components;
 		}
 
-		return Component.literal("Heranças do peitoral: " + soldierBlueprint.getInheritedChestplateEnchantmentsSummary());
+		components.add(Component.translatable("text.kingdomsiege.inheritance.chestplate_header")
+				.withStyle(ChatFormatting.LIGHT_PURPLE));
+
+		appendLevelInheritanceComponent(
+				components,
+				"text.kingdomsiege.inheritance.protection",
+				soldierBlueprint.inheritedProtectionLevel(),
+				ChatFormatting.LIGHT_PURPLE
+		);
+
+		appendLevelInheritanceComponent(
+				components,
+				"text.kingdomsiege.inheritance.projectile_protection",
+				soldierBlueprint.inheritedProjectileProtectionLevel(),
+				ChatFormatting.LIGHT_PURPLE
+		);
+
+		appendLevelInheritanceComponent(
+				components,
+				"text.kingdomsiege.inheritance.blast_protection",
+				soldierBlueprint.inheritedBlastProtectionLevel(),
+				ChatFormatting.LIGHT_PURPLE
+		);
+
+		appendLevelInheritanceComponent(
+				components,
+				"text.kingdomsiege.inheritance.fire_protection",
+				soldierBlueprint.inheritedFireProtectionLevel(),
+				ChatFormatting.LIGHT_PURPLE
+		);
+
+		appendLevelInheritanceComponent(
+				components,
+				"text.kingdomsiege.inheritance.thorns",
+				soldierBlueprint.inheritedThornsLevel(),
+				ChatFormatting.LIGHT_PURPLE
+		);
+
+		return components;
 	}
 
-	private Component getInheritedWeaponEnchantmentsComponent() {
+	private List<Component> getInheritedWeaponEnchantmentsComponents() {
+		List<Component> components = new ArrayList<>();
+
 		if (!soldierBlueprint.hasInheritedWeaponEnchantments()) {
-			return null;
+			return components;
 		}
 
-		return Component.literal("Heranças da arma: " + soldierBlueprint.getInheritedWeaponEnchantmentsSummary());
+		components.add(Component.translatable("text.kingdomsiege.inheritance.weapon_header")
+				.withStyle(ChatFormatting.GOLD));
+
+		if (canUseBowCombat()) {
+			appendLevelInheritanceComponent(
+					components,
+					"text.kingdomsiege.inheritance.power",
+					soldierBlueprint.inheritedPowerLevel(),
+					ChatFormatting.GOLD
+			);
+
+			appendLevelInheritanceComponent(
+					components,
+					"text.kingdomsiege.inheritance.punch",
+					soldierBlueprint.inheritedPunchLevel(),
+					ChatFormatting.GOLD
+			);
+
+			appendFlagInheritanceComponent(
+					components,
+					"text.kingdomsiege.inheritance.flame",
+					soldierBlueprint.inheritedFlameLevel() > 0,
+					ChatFormatting.GOLD
+			);
+
+			return components;
+		}
+
+		appendLevelInheritanceComponent(
+				components,
+				"text.kingdomsiege.inheritance.sharpness",
+				soldierBlueprint.inheritedSharpnessLevel(),
+				ChatFormatting.GOLD
+		);
+
+		appendLevelInheritanceComponent(
+				components,
+				"text.kingdomsiege.inheritance.fire_aspect",
+				soldierBlueprint.inheritedFireAspectLevel(),
+				ChatFormatting.GOLD
+		);
+
+		appendLevelInheritanceComponent(
+				components,
+				"text.kingdomsiege.inheritance.knockback",
+				soldierBlueprint.inheritedKnockbackLevel(),
+				ChatFormatting.GOLD
+		);
+
+		return components;
+	}
+
+	private void appendLevelInheritanceComponent(
+			List<Component> components,
+			String inheritanceKey,
+			int level,
+			ChatFormatting color
+	) {
+		if (level <= 0) {
+			return;
+		}
+
+		components.add(
+				Component.translatable(
+						"text.kingdomsiege.inheritance.level_line",
+						Component.translatable(inheritanceKey),
+						toRoman(level)
+				).withStyle(color)
+		);
+	}
+
+	private void appendFlagInheritanceComponent(
+			List<Component> components,
+			String inheritanceKey,
+			boolean enabled,
+			ChatFormatting color
+	) {
+		if (!enabled) {
+			return;
+		}
+
+		components.add(
+				Component.translatable(
+						"text.kingdomsiege.inheritance.single_line",
+						Component.translatable(inheritanceKey)
+				).withStyle(color)
+		);
 	}
 
 	private Component getTerritoryStatusComponent() {
@@ -722,6 +853,17 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	private String formatOneDecimal(double value) {
 		return String.format(java.util.Locale.ROOT, "%.1f", value);
+	}
+
+	private String toRoman(int level) {
+		return switch (level) {
+			case 1 -> "I";
+			case 2 -> "II";
+			case 3 -> "III";
+			case 4 -> "IV";
+			case 5 -> "V";
+			default -> Integer.toString(level);
+		};
 	}
 
 	private void sendBasicStatusTo(Player player) {
@@ -749,13 +891,11 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		player.sendSystemMessage(getCombatPowerComponent());
 
-		Component inheritedChestplateEnchantmentsComponent = getInheritedChestplateEnchantmentsComponent();
-		if (inheritedChestplateEnchantmentsComponent != null) {
+		for (Component inheritedChestplateEnchantmentsComponent : getInheritedChestplateEnchantmentsComponents()) {
 			player.sendSystemMessage(inheritedChestplateEnchantmentsComponent);
 		}
 
-		Component inheritedWeaponEnchantmentsComponent = getInheritedWeaponEnchantmentsComponent();
-		if (inheritedWeaponEnchantmentsComponent != null) {
+		for (Component inheritedWeaponEnchantmentsComponent : getInheritedWeaponEnchantmentsComponents()) {
 			player.sendSystemMessage(inheritedWeaponEnchantmentsComponent);
 		}
 

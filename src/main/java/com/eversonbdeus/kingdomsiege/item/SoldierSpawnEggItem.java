@@ -131,10 +131,8 @@ public class SoldierSpawnEggItem extends SpawnEggItem {
 				formatOneDecimal(blueprint.getToughnessBonus())
 		).withStyle(ChatFormatting.GREEN));
 
-		if (blueprint.hasInheritedChestplateEnchantments()) {
-			tooltipAdder.accept(Component.literal("Heranças do peitoral: " + blueprint.getInheritedChestplateEnchantmentsSummary())
-					.withStyle(ChatFormatting.LIGHT_PURPLE));
-		}
+		appendInheritedChestplateTooltip(tooltipAdder, blueprint);
+		appendInheritedWeaponTooltip(tooltipAdder, blueprint);
 	}
 
 	@Override
@@ -178,6 +176,142 @@ public class SoldierSpawnEggItem extends SpawnEggItem {
 		return InteractionResult.SUCCESS;
 	}
 
+	private void appendInheritedChestplateTooltip(Consumer<Component> tooltipAdder, SoldierBlueprintData blueprint) {
+		if (!blueprint.hasInheritedChestplateEnchantments()) {
+			return;
+		}
+
+		tooltipAdder.accept(Component.translatable("text.kingdomsiege.inheritance.chestplate_header")
+				.withStyle(ChatFormatting.LIGHT_PURPLE));
+
+		appendLevelInheritanceLine(
+				tooltipAdder,
+				"text.kingdomsiege.inheritance.protection",
+				blueprint.inheritedProtectionLevel(),
+				ChatFormatting.LIGHT_PURPLE
+		);
+
+		appendLevelInheritanceLine(
+				tooltipAdder,
+				"text.kingdomsiege.inheritance.projectile_protection",
+				blueprint.inheritedProjectileProtectionLevel(),
+				ChatFormatting.LIGHT_PURPLE
+		);
+
+		appendLevelInheritanceLine(
+				tooltipAdder,
+				"text.kingdomsiege.inheritance.blast_protection",
+				blueprint.inheritedBlastProtectionLevel(),
+				ChatFormatting.LIGHT_PURPLE
+		);
+
+		appendLevelInheritanceLine(
+				tooltipAdder,
+				"text.kingdomsiege.inheritance.fire_protection",
+				blueprint.inheritedFireProtectionLevel(),
+				ChatFormatting.LIGHT_PURPLE
+		);
+
+		appendLevelInheritanceLine(
+				tooltipAdder,
+				"text.kingdomsiege.inheritance.thorns",
+				blueprint.inheritedThornsLevel(),
+				ChatFormatting.LIGHT_PURPLE
+		);
+	}
+
+	private void appendInheritedWeaponTooltip(Consumer<Component> tooltipAdder, SoldierBlueprintData blueprint) {
+		if (!blueprint.hasInheritedWeaponEnchantments()) {
+			return;
+		}
+
+		tooltipAdder.accept(Component.translatable("text.kingdomsiege.inheritance.weapon_header")
+				.withStyle(ChatFormatting.GOLD));
+
+		if (blueprint.weaponClass() == WeaponClass.BOW) {
+			appendLevelInheritanceLine(
+					tooltipAdder,
+					"text.kingdomsiege.inheritance.power",
+					blueprint.inheritedPowerLevel(),
+					ChatFormatting.GOLD
+			);
+
+			appendLevelInheritanceLine(
+					tooltipAdder,
+					"text.kingdomsiege.inheritance.punch",
+					blueprint.inheritedPunchLevel(),
+					ChatFormatting.GOLD
+			);
+
+			appendFlagInheritanceLine(
+					tooltipAdder,
+					"text.kingdomsiege.inheritance.flame",
+					blueprint.inheritedFlameLevel() > 0,
+					ChatFormatting.GOLD
+			);
+
+			return;
+		}
+
+		appendLevelInheritanceLine(
+				tooltipAdder,
+				"text.kingdomsiege.inheritance.sharpness",
+				blueprint.inheritedSharpnessLevel(),
+				ChatFormatting.GOLD
+		);
+
+		appendLevelInheritanceLine(
+				tooltipAdder,
+				"text.kingdomsiege.inheritance.fire_aspect",
+				blueprint.inheritedFireAspectLevel(),
+				ChatFormatting.GOLD
+		);
+
+		appendLevelInheritanceLine(
+				tooltipAdder,
+				"text.kingdomsiege.inheritance.knockback",
+				blueprint.inheritedKnockbackLevel(),
+				ChatFormatting.GOLD
+		);
+	}
+
+	private void appendLevelInheritanceLine(
+			Consumer<Component> tooltipAdder,
+			String inheritanceKey,
+			int level,
+			ChatFormatting color
+	) {
+		if (level <= 0) {
+			return;
+		}
+
+		tooltipAdder.accept(
+				Component.translatable(
+						"text.kingdomsiege.inheritance.level_line",
+						Component.translatable(inheritanceKey),
+						toRoman(level)
+				).withStyle(color)
+		);
+	}
+
+	private void appendFlagInheritanceLine(
+			Consumer<Component> tooltipAdder,
+			String inheritanceKey,
+			boolean enabled,
+			ChatFormatting color
+	) {
+		if (!enabled) {
+			return;
+		}
+
+		tooltipAdder.accept(
+				Component.translatable(
+						"text.kingdomsiege.inheritance.single_line",
+						Component.translatable(inheritanceKey)
+				).withStyle(color)
+		);
+	}
+
 	private Component resolveWeaponLabel(SoldierBlueprintData blueprint) {
 		if (!blueprint.weaponStack().isEmpty()) {
 			return blueprint.weaponStack().getHoverName();
@@ -188,5 +322,16 @@ public class SoldierSpawnEggItem extends SpawnEggItem {
 
 	private String formatOneDecimal(double value) {
 		return String.format(Locale.ROOT, "%.1f", value);
+	}
+
+	private String toRoman(int level) {
+		return switch (level) {
+			case 1 -> "I";
+			case 2 -> "II";
+			case 3 -> "III";
+			case 4 -> "IV";
+			case 5 -> "V";
+			default -> Integer.toString(level);
+		};
 	}
 }

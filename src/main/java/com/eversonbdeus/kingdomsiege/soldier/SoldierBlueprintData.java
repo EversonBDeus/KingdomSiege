@@ -207,17 +207,6 @@ public record SoldierBlueprintData(
 				|| inheritedThornsLevel > 0;
 	}
 
-	public String getInheritedChestplateEnchantmentsSummary() {
-		StringBuilder summary = new StringBuilder();
-		appendEnchantment(summary, "Proteção", inheritedProtectionLevel);
-		appendEnchantment(summary, "Projéteis", inheritedProjectileProtectionLevel);
-		appendEnchantment(summary, "Explosão", inheritedBlastProtectionLevel);
-		appendEnchantment(summary, "Fogo", inheritedFireProtectionLevel);
-		appendEnchantment(summary, "Espinhos", inheritedThornsLevel);
-
-		return summary.isEmpty() ? "Nenhuma" : summary.toString();
-	}
-
 	public boolean hasInheritedWeaponEnchantments() {
 		return inheritedSharpnessLevel > 0
 				|| inheritedFireAspectLevel > 0
@@ -225,34 +214,6 @@ public record SoldierBlueprintData(
 				|| inheritedPowerLevel > 0
 				|| inheritedPunchLevel > 0
 				|| inheritedFlameLevel > 0;
-	}
-
-	public String getInheritedWeaponEnchantmentsSummary() {
-		StringBuilder summary = new StringBuilder();
-
-		if (weaponClass == WeaponClass.BOW) {
-			appendEnchantment(summary, "Força", inheritedPowerLevel);
-			appendEnchantment(summary, "Impacto", inheritedPunchLevel);
-			appendEnchantment(summary, "Chama", inheritedFlameLevel);
-		} else {
-			appendEnchantment(summary, "Afiação", inheritedSharpnessLevel);
-			appendEnchantment(summary, "Aspecto Flamejante", inheritedFireAspectLevel);
-			appendEnchantment(summary, "Repulsão", inheritedKnockbackLevel);
-		}
-
-		return summary.isEmpty() ? "Nenhuma" : summary.toString();
-	}
-
-	private static void appendEnchantment(StringBuilder summary, String label, int level) {
-		if (level <= 0) {
-			return;
-		}
-
-		if (!summary.isEmpty()) {
-			summary.append(" | ");
-		}
-
-		summary.append(label).append(' ').append(level);
 	}
 
 	private static int resolveEnchantmentLevel(ItemStack stack, ResourceKey<Enchantment> enchantmentKey) {

@@ -43,5 +43,20 @@
   "message.kingdomsiege.soldier_status.power_melee": "Ataque base: %s",
   "message.kingdomsiege.soldier_status.power_ranged": "Dano de projétil: %s",
   "message.kingdomsiege.soldier_status.territory": "Posto: %1$s, %2$s, %3$s | Raio: %4$s",
-  "message.kingdomsiege.soldier_status.territory_undefined": "Posto: não definido | Raio: %s"
+  "message.kingdomsiege.soldier_status.territory_undefined": "Posto: não definido | Raio: %s",
+  "text.kingdomsiege.inheritance.chestplate_header": "Heranças do peitoral:",
+  "text.kingdomsiege.inheritance.weapon_header": "Heranças da arma:",
+  "text.kingdomsiege.inheritance.level_line": "%1$s %2$s",
+  "text.kingdomsiege.inheritance.single_line": "%1$s",
+  "text.kingdomsiege.inheritance.protection": "Proteção",
+  "text.kingdomsiege.inheritance.projectile_protection": "Proteção contra projéteis",
+  "text.kingdomsiege.inheritance.blast_protection": "Proteção contra explosões",
+  "text.kingdomsiege.inheritance.fire_protection": "Proteção contra fogo",
+  "text.kingdomsiege.inheritance.thorns": "Espinhos",
+  "text.kingdomsiege.inheritance.sharpness": "Afiação",
+  "text.kingdomsiege.inheritance.fire_aspect": "Aspecto Flamejante",
+  "text.kingdomsiege.inheritance.knockback": "Repulsão",
+  "text.kingdomsiege.inheritance.power": "Força",
+  "text.kingdomsiege.inheritance.punch": "Impacto",
+  "text.kingdomsiege.inheritance.flame": "Chama"
 }

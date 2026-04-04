@@ -43,5 +43,20 @@
   "message.kingdomsiege.soldier_status.power_melee": "Base attack: %s",
   "message.kingdomsiege.soldier_status.power_ranged": "Projectile damage: %s",
   "message.kingdomsiege.soldier_status.territory": "Post: %1$s, %2$s, %3$s | Radius: %4$s",
-  "message.kingdomsiege.soldier_status.territory_undefined": "Post: not defined | Radius: %s"
+  "message.kingdomsiege.soldier_status.territory_undefined": "Post: not defined | Radius: %s",
+  "text.kingdomsiege.inheritance.chestplate_header": "Inherited chestplate traits:",
+  "text.kingdomsiege.inheritance.weapon_header": "Inherited weapon traits:",
+  "text.kingdomsiege.inheritance.level_line": "%1$s %2$s",
+  "text.kingdomsiege.inheritance.single_line": "%1$s",
+  "text.kingdomsiege.inheritance.protection": "Protection",
+  "text.kingdomsiege.inheritance.projectile_protection": "Projectile Protection",
+  "text.kingdomsiege.inheritance.blast_protection": "Blast Protection",
+  "text.kingdomsiege.inheritance.fire_protection": "Fire Protection",
+  "text.kingdomsiege.inheritance.thorns": "Thorns",
+  "text.kingdomsiege.inheritance.sharpness": "Sharpness",
+  "text.kingdomsiege.inheritance.fire_aspect": "Fire Aspect",
+  "text.kingdomsiege.inheritance.knockback": "Knockback",
+  "text.kingdomsiege.inheritance.power": "Power",
+  "text.kingdomsiege.inheritance.punch": "Punch",
+  "text.kingdomsiege.inheritance.flame": "Flame"
 }
