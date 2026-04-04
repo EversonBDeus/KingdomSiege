@@ -1,22 +1,4 @@
 {
-  "type": "minecraft:crafting_shapeless",
-  "category": "misc",
-  "ingredients": [
-    "kingdomsiege:castle_soldier_spawn_egg",
-    "minecraft:bow",
-    "minecraft:leather_chestplate"
-  ],
-  "result": {
-    "id": "kingdomsiege:castle_soldier_spawn_egg",
-    "count": 1,
-    "components": {
-      "kingdomsiege:soldier_class": "archer",
-      "kingdomsiege:soldier_blueprint": {
-        "soldier_class": "archer",
-        "armor_tier": "leather",
-        "weapon_class": "bow",
-        "catalyst_type": "none"
-      }
-    }
-  }
+  "type": "kingdomsiege:archer_soldier",
+  "category": "equipment"
 }
