@@ -6,6 +6,8 @@ import com.eversonbdeus.kingdomsiege.registry.ModEntities;
 import com.eversonbdeus.kingdomsiege.soldier.ArmorTier;
 import com.eversonbdeus.kingdomsiege.soldier.SoldierBlueprintData;
 import com.eversonbdeus.kingdomsiege.soldier.SoldierClass;
+import com.eversonbdeus.kingdomsiege.soldier.WeaponClass;
+import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
@@ -16,8 +18,13 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.SpawnEggItem;
+import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.item.component.TooltipDisplay;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
+
+import java.util.Locale;
+import java.util.function.Consumer;
 
 public class SoldierSpawnEggItem extends SpawnEggItem {
 	public SoldierSpawnEggItem(Item.Properties properties) {
@@ -70,6 +77,62 @@ public class SoldierSpawnEggItem extends SpawnEggItem {
 	}
 
 	@Override
+	public void appendHoverText(
+			ItemStack stack,
+			Item.TooltipContext tooltipContext,
+			TooltipDisplay tooltipDisplay,
+			Consumer<Component> tooltipAdder,
+			TooltipFlag tooltipFlag
+	) {
+		super.appendHoverText(stack, tooltipContext, tooltipDisplay, tooltipAdder, tooltipFlag);
+
+		SoldierBlueprintData blueprint = getSoldierBlueprint(stack);
+
+		tooltipAdder.accept(Component.translatable(
+				"tooltip.kingdomsiege.soldier_egg.class",
+				Component.translatable(blueprint.soldierClass().getTranslationKey())
+		).withStyle(ChatFormatting.GRAY));
+
+		tooltipAdder.accept(Component.translatable(
+				"tooltip.kingdomsiege.soldier_egg.weapon",
+				resolveWeaponLabel(blueprint)
+		).withStyle(ChatFormatting.GRAY));
+
+		tooltipAdder.accept(Component.translatable(
+				"tooltip.kingdomsiege.soldier_egg.chestplate",
+				Component.translatable(blueprint.armorTier().getTranslationKey())
+		).withStyle(ChatFormatting.GRAY));
+
+		tooltipAdder.accept(Component.translatable(
+				"tooltip.kingdomsiege.soldier_egg.catalyst",
+				Component.translatable(blueprint.catalystType().getTranslationKey())
+		).withStyle(ChatFormatting.GRAY));
+
+		if (blueprint.weaponClass() == WeaponClass.BOW) {
+			tooltipAdder.accept(Component.translatable(
+					"tooltip.kingdomsiege.soldier_egg.projectile_damage",
+					formatOneDecimal(blueprint.getProjectileBaseDamage())
+			).withStyle(ChatFormatting.BLUE));
+		} else {
+			tooltipAdder.accept(Component.translatable(
+					"tooltip.kingdomsiege.soldier_egg.attack",
+					formatOneDecimal(blueprint.getBaseAttackDamage())
+			).withStyle(ChatFormatting.BLUE));
+		}
+
+		tooltipAdder.accept(Component.translatable(
+				"tooltip.kingdomsiege.soldier_egg.health",
+				formatOneDecimal(20.0D + blueprint.getBonusHealth())
+		).withStyle(ChatFormatting.GREEN));
+
+		tooltipAdder.accept(Component.translatable(
+				"tooltip.kingdomsiege.soldier_egg.defense",
+				formatOneDecimal(blueprint.getArmorBonus()),
+				formatOneDecimal(blueprint.getToughnessBonus())
+		).withStyle(ChatFormatting.GREEN));
+	}
+
+	@Override
 	public InteractionResult useOn(UseOnContext context) {
 		Level level = context.getLevel();
 
@@ -108,5 +171,17 @@ public class SoldierSpawnEggItem extends SpawnEggItem {
 		);
 
 		return InteractionResult.SUCCESS;
+	}
+
+	private Component resolveWeaponLabel(SoldierBlueprintData blueprint) {
+		if (!blueprint.weaponStack().isEmpty()) {
+			return blueprint.weaponStack().getHoverName();
+		}
+
+		return Component.translatable(blueprint.weaponClass().getTranslationKey());
+	}
+
+	private String formatOneDecimal(double value) {
+		return String.format(Locale.ROOT, "%.1f", value);
 	}
 }
