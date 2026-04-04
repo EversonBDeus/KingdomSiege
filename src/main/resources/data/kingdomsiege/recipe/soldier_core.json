@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "OOO",
+    "RGR",
+    "OOO"
+  ],
+  "key": {
+    "O": "minecraft:obsidian",
+    "R": "minecraft:redstone",
+    "G": "minecraft:golden_apple"
+  },
+  "result": {
+    "id": "kingdomsiege:soldier_core",
+    "count": 1
+  }
+}
