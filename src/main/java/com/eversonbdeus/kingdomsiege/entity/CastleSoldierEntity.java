@@ -77,14 +77,21 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final double INHERITED_POWER_BASE_BONUS = 0.5D;
 
 	private static final double SWORDSMAN_MELEE_SPEED = 1.15D;
+	private static final double GUARD_MOVE_SPEED = 1.0D;
+	private static final double GUARD_RETURN_BUFFER = 1.5D;
+	private static final double GUARD_CHASE_LEASH = 6.0D;
+	private static final double GUARD_HOME_HOLD_DISTANCE = 1.75D;
+	private static final int GUARD_HOME_HOLD_MIN_TICKS = 30;
+	private static final int GUARD_HOME_HOLD_MAX_TICKS = 70;
 
 	private static final double ARCHER_MOVE_SPEED = 1.0D;
 	private static final double ARCHER_ATTACK_RANGE = 12.0D;
-	private static final double ARCHER_RETREAT_DISTANCE = 5.0D;
-	private static final double ARCHER_RETREAT_STEP = 4.0D;
+	private static final double ARCHER_COMFORT_DISTANCE = 7.0D;
+	private static final double ARCHER_RETREAT_DISTANCE = 4.5D;
+	private static final double ARCHER_LATERAL_OFFSET = 2.0D;
+	private static final int ARCHER_REPOSITION_INTERVAL_TICKS = 12;
 	private static final int ARCHER_ATTACK_INTERVAL_TICKS = 30;
 	private static final float ARCHER_PROJECTILE_VELOCITY = 1.6F;
-	private static final double ARCHER_RETREAT_DISTANCE_SQR = ARCHER_RETREAT_DISTANCE * ARCHER_RETREAT_DISTANCE;
 
 	private static final double OWNER_PROTECT_RANGE = 16.0D;
 	private static final double OWNER_PROTECT_RANGE_SQR = OWNER_PROTECT_RANGE * OWNER_PROTECT_RANGE;
@@ -95,9 +102,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final double FOLLOW_MOVE_SPEED = 1.15D;
 	private static final double FOLLOW_REJOIN_DISTANCE = 24.0D;
 	private static final double FOLLOW_REJOIN_DISTANCE_SQR = FOLLOW_REJOIN_DISTANCE * FOLLOW_REJOIN_DISTANCE;
-	private static final double GUARD_MOVE_SPEED = 1.0D;
-	private static final double GUARD_RETURN_BUFFER = 1.5D;
-	private static final double GUARD_CHASE_LEASH = 4.0D;
 	private static final int DEFAULT_GUARD_RADIUS = 8;
 
 	private SoldierBlueprintData soldierBlueprint = SoldierBlueprintData.defaultRecruit();
@@ -312,9 +316,10 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		goalSelector.addGoal(1, new ArcherRangedAttackGoal(this, ARCHER_MOVE_SPEED, ARCHER_ATTACK_RANGE));
 		goalSelector.addGoal(2, new FollowOwnerGoal(this, FOLLOW_MOVE_SPEED, FOLLOW_START_DISTANCE, FOLLOW_STOP_DISTANCE));
 		goalSelector.addGoal(3, new ReturnToHomePosGoal(this, GUARD_MOVE_SPEED));
-		goalSelector.addGoal(4, new GuardModeRandomStrollGoal(this, GUARD_MOVE_SPEED));
-		goalSelector.addGoal(5, new LookAtPlayerGoal(this, Player.class, 8.0F));
-		goalSelector.addGoal(6, new RandomLookAroundGoal(this));
+		goalSelector.addGoal(4, new GuardHomePauseGoal(this));
+		goalSelector.addGoal(5, new GuardModeRandomStrollGoal(this, GUARD_MOVE_SPEED));
+		goalSelector.addGoal(6, new LookAtPlayerGoal(this, Player.class, 8.0F));
+		goalSelector.addGoal(7, new RandomLookAroundGoal(this));
 
 		targetSelector.addGoal(0, new ProtectOwnerWhenHurtGoal(this));
 		targetSelector.addGoal(1, new AssistOwnerAttackTargetGoal(this));
@@ -599,6 +604,47 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return Vec3.atBottomCenterOf(homePos);
 	}
 
+	private Vec3 clampToGuardArea(Vec3 desiredPosition) {
+		if (!isGuardMode() || !hasHomePos()) {
+			return desiredPosition;
+		}
+
+		Vec3 homeAnchor = getHomeAnchor();
+		double maxDistance = guardRadius + GUARD_CHASE_LEASH;
+		double deltaX = desiredPosition.x - homeAnchor.x;
+		double deltaZ = desiredPosition.z - homeAnchor.z;
+		double horizontalDistance = Math.sqrt(deltaX * deltaX + deltaZ * deltaZ);
+
+		if (horizontalDistance <= maxDistance || horizontalDistance < 1.0E-4D) {
+			return desiredPosition;
+		}
+
+		double scale = maxDistance / horizontalDistance;
+		return new Vec3(
+				homeAnchor.x + deltaX * scale,
+				desiredPosition.y,
+				homeAnchor.z + deltaZ * scale
+		);
+	}
+
+	private Vec3 getCombatKiteAnchor(LivingEntity target, double desiredDistance, double lateralOffset) {
+		Vec3 horizontalAway = position().subtract(target.position());
+		horizontalAway = new Vec3(horizontalAway.x, 0.0D, horizontalAway.z);
+
+		if (horizontalAway.lengthSqr() < 1.0E-4D) {
+			horizontalAway = new Vec3(0.0D, 0.0D, 1.0D);
+		} else {
+			horizontalAway = horizontalAway.normalize();
+		}
+
+		Vec3 lateral = new Vec3(-horizontalAway.z, 0.0D, horizontalAway.x);
+		Vec3 desiredPosition = target.position()
+				.add(horizontalAway.scale(desiredDistance))
+				.add(lateral.scale(lateralOffset));
+
+		return clampToGuardArea(desiredPosition);
+	}
+
 	private Vec3 getFollowAnchor(Player owner) {
 		Vec3 lookDirection = owner.getLookAngle();
 		Vec3 horizontalLookDirection = new Vec3(lookDirection.x, 0.0D, lookDirection.z);
@@ -611,43 +657,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		Vec3 ownerPosition = owner.position();
 		return ownerPosition.subtract(horizontalLookDirection.scale(FOLLOW_DESIRED_DISTANCE));
-	}
-
-	private Vec3 getArcherRetreatAnchor(LivingEntity target) {
-		Vec3 retreatDirection = position().subtract(target.position());
-		Vec3 horizontalRetreatDirection = new Vec3(retreatDirection.x, 0.0D, retreatDirection.z);
-
-		if (horizontalRetreatDirection.lengthSqr() < 1.0E-4D) {
-			double yawRadians = Math.toRadians(getYRot());
-			horizontalRetreatDirection = new Vec3(-Math.sin(yawRadians), 0.0D, Math.cos(yawRadians));
-		} else {
-			horizontalRetreatDirection = horizontalRetreatDirection.normalize();
-		}
-
-		Vec3 retreatAnchor = position().add(horizontalRetreatDirection.scale(ARCHER_RETREAT_STEP));
-		return clampAnchorToGuardArea(retreatAnchor, 0.5D);
-	}
-
-	private Vec3 clampAnchorToGuardArea(Vec3 anchor, double padding) {
-		if (!isGuardMode() || !hasHomePos()) {
-			return anchor;
-		}
-
-		Vec3 homeAnchor = getHomeAnchor();
-		Vec3 offset = anchor.subtract(homeAnchor);
-		double horizontalDistance = Math.sqrt(offset.x * offset.x + offset.z * offset.z);
-		double maxDistance = Math.max(1.0D, guardRadius - padding);
-
-		if (horizontalDistance <= maxDistance || horizontalDistance < 1.0E-4D) {
-			return anchor;
-		}
-
-		double scale = maxDistance / horizontalDistance;
-		return new Vec3(
-				homeAnchor.x + offset.x * scale,
-				anchor.y,
-				homeAnchor.z + offset.z * scale
-		);
 	}
 
 	private void clearCurrentTarget() {
@@ -676,6 +685,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		return target instanceof Enemy;
 	}
+
 	private boolean isValidCombatTarget(LivingEntity target, ServerLevel level) {
 		return isValidCombatTarget(target);
 	}
@@ -1409,12 +1419,16 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		private final double speedModifier;
 		private final double attackRangeSqr;
 		private int attackCooldown;
+		private int repositionCooldown;
+		private int lateralDirection;
 
 		private ArcherRangedAttackGoal(CastleSoldierEntity soldier, double speedModifier, double attackRange) {
 			this.soldier = soldier;
 			this.speedModifier = speedModifier;
 			this.attackRangeSqr = attackRange * attackRange;
 			this.attackCooldown = 0;
+			this.repositionCooldown = 0;
+			this.lateralDirection = 1;
 			setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK));
 		}
 
@@ -1433,11 +1447,14 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		@Override
 		public void start() {
 			attackCooldown = 0;
+			repositionCooldown = 0;
+			lateralDirection = soldier.getRandom().nextBoolean() ? 1 : -1;
 		}
 
 		@Override
 		public void stop() {
 			attackCooldown = 0;
+			repositionCooldown = 0;
 			soldier.getNavigation().stop();
 		}
 
@@ -1452,17 +1469,28 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			}
 
 			double distanceToTargetSqr = soldier.distanceToSqr(target);
+			double distanceToTarget = Math.sqrt(distanceToTargetSqr);
 			boolean hasLineOfSight = soldier.getSensing().hasLineOfSight(target);
 
 			soldier.getLookControl().setLookAt(target, 30.0F, 30.0F);
 
-			if (distanceToTargetSqr <= ARCHER_RETREAT_DISTANCE_SQR && hasLineOfSight) {
-				Vec3 retreatAnchor = soldier.getArcherRetreatAnchor(target);
+			if (distanceToTarget < ARCHER_RETREAT_DISTANCE && hasLineOfSight) {
+				Vec3 retreatAnchor = soldier.getCombatKiteAnchor(target, ARCHER_COMFORT_DISTANCE, lateralDirection * ARCHER_LATERAL_OFFSET);
 				soldier.getNavigation().moveTo(retreatAnchor.x, retreatAnchor.y, retreatAnchor.z, speedModifier);
+				repositionCooldown = ARCHER_REPOSITION_INTERVAL_TICKS;
 			} else if (distanceToTargetSqr > attackRangeSqr || !hasLineOfSight) {
 				soldier.getNavigation().moveTo(target, speedModifier);
+				repositionCooldown = ARCHER_REPOSITION_INTERVAL_TICKS;
+			} else if (distanceToTarget > ARCHER_COMFORT_DISTANCE + 1.0D) {
+				soldier.getNavigation().moveTo(target, speedModifier * 0.85D);
+				repositionCooldown = ARCHER_REPOSITION_INTERVAL_TICKS;
 			} else {
-				soldier.getNavigation().stop();
+				if (--repositionCooldown <= 0) {
+					repositionCooldown = ARCHER_REPOSITION_INTERVAL_TICKS;
+					lateralDirection = soldier.getRandom().nextBoolean() ? 1 : -1;
+					Vec3 repositionAnchor = soldier.getCombatKiteAnchor(target, ARCHER_COMFORT_DISTANCE, lateralDirection * ARCHER_LATERAL_OFFSET);
+					soldier.getNavigation().moveTo(repositionAnchor.x, repositionAnchor.y, repositionAnchor.z, speedModifier * 0.9D);
+				}
 			}
 
 			if (attackCooldown > 0) {
@@ -1520,6 +1548,58 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 	}
 
+	private static final class GuardHomePauseGoal extends Goal {
+		private final CastleSoldierEntity soldier;
+		private int remainingTicks;
+
+		private GuardHomePauseGoal(CastleSoldierEntity soldier) {
+			this.soldier = soldier;
+			this.remainingTicks = 0;
+			setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK));
+		}
+
+		@Override
+		public boolean canUse() {
+			if (!soldier.isGuardMode() || soldier.getTarget() != null || !soldier.hasHomePos()) {
+				return false;
+			}
+
+			if (!soldier.getNavigation().isDone()) {
+				return false;
+			}
+
+			double maxDistanceSqr = GUARD_HOME_HOLD_DISTANCE * GUARD_HOME_HOLD_DISTANCE;
+			return soldier.position().distanceToSqr(soldier.getHomeAnchor()) <= maxDistanceSqr
+					&& soldier.getRandom().nextInt(80) == 0;
+		}
+
+		@Override
+		public boolean canContinueToUse() {
+			return soldier.isGuardMode()
+					&& soldier.getTarget() == null
+					&& remainingTicks > 0;
+		}
+
+		@Override
+		public void start() {
+			remainingTicks = GUARD_HOME_HOLD_MIN_TICKS + soldier.getRandom().nextInt(GUARD_HOME_HOLD_MAX_TICKS - GUARD_HOME_HOLD_MIN_TICKS + 1);
+			soldier.getNavigation().stop();
+		}
+
+		@Override
+		public void stop() {
+			remainingTicks = 0;
+		}
+
+		@Override
+		public void tick() {
+			remainingTicks--;
+			Vec3 homeAnchor = soldier.getHomeAnchor();
+			soldier.getNavigation().stop();
+			soldier.getLookControl().setLookAt(homeAnchor.x, homeAnchor.y, homeAnchor.z, 30.0F, 30.0F);
+		}
+	}
+
 	private static final class GuardModeRandomStrollGoal extends RandomStrollGoal {
 		private final CastleSoldierEntity soldier;
 
@@ -1531,6 +1611,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		@Override
 		public boolean canUse() {
 			return soldier.isGuardMode()
+					&& soldier.getTarget() == null
 					&& !soldier.shouldReturnToHomePos()
 					&& super.canUse();
 		}
@@ -1538,6 +1619,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		@Override
 		public boolean canContinueToUse() {
 			return soldier.isGuardMode()
+					&& soldier.getTarget() == null
 					&& !soldier.shouldReturnToHomePos()
 					&& super.canContinueToUse();
 		}
