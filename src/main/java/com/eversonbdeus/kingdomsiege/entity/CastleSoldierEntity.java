@@ -25,6 +25,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
@@ -36,7 +37,7 @@ import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.ai.goal.RandomStrollGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
-import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.monster.RangedAttackMob;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.Projectile;
@@ -79,8 +80,11 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	private static final double ARCHER_MOVE_SPEED = 1.0D;
 	private static final double ARCHER_ATTACK_RANGE = 12.0D;
+	private static final double ARCHER_RETREAT_DISTANCE = 5.0D;
+	private static final double ARCHER_RETREAT_STEP = 4.0D;
 	private static final int ARCHER_ATTACK_INTERVAL_TICKS = 30;
 	private static final float ARCHER_PROJECTILE_VELOCITY = 1.6F;
+	private static final double ARCHER_RETREAT_DISTANCE_SQR = ARCHER_RETREAT_DISTANCE * ARCHER_RETREAT_DISTANCE;
 
 	private static final double OWNER_PROTECT_RANGE = 16.0D;
 	private static final double OWNER_PROTECT_RANGE_SQR = OWNER_PROTECT_RANGE * OWNER_PROTECT_RANGE;
@@ -609,6 +613,43 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return ownerPosition.subtract(horizontalLookDirection.scale(FOLLOW_DESIRED_DISTANCE));
 	}
 
+	private Vec3 getArcherRetreatAnchor(LivingEntity target) {
+		Vec3 retreatDirection = position().subtract(target.position());
+		Vec3 horizontalRetreatDirection = new Vec3(retreatDirection.x, 0.0D, retreatDirection.z);
+
+		if (horizontalRetreatDirection.lengthSqr() < 1.0E-4D) {
+			double yawRadians = Math.toRadians(getYRot());
+			horizontalRetreatDirection = new Vec3(-Math.sin(yawRadians), 0.0D, Math.cos(yawRadians));
+		} else {
+			horizontalRetreatDirection = horizontalRetreatDirection.normalize();
+		}
+
+		Vec3 retreatAnchor = position().add(horizontalRetreatDirection.scale(ARCHER_RETREAT_STEP));
+		return clampAnchorToGuardArea(retreatAnchor, 0.5D);
+	}
+
+	private Vec3 clampAnchorToGuardArea(Vec3 anchor, double padding) {
+		if (!isGuardMode() || !hasHomePos()) {
+			return anchor;
+		}
+
+		Vec3 homeAnchor = getHomeAnchor();
+		Vec3 offset = anchor.subtract(homeAnchor);
+		double horizontalDistance = Math.sqrt(offset.x * offset.x + offset.z * offset.z);
+		double maxDistance = Math.max(1.0D, guardRadius - padding);
+
+		if (horizontalDistance <= maxDistance || horizontalDistance < 1.0E-4D) {
+			return anchor;
+		}
+
+		double scale = maxDistance / horizontalDistance;
+		return new Vec3(
+				homeAnchor.x + offset.x * scale,
+				anchor.y,
+				homeAnchor.z + offset.z * scale
+		);
+	}
+
 	private void clearCurrentTarget() {
 		setTarget(null);
 		getNavigation().stop();
@@ -633,7 +674,10 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			return false;
 		}
 
-		return target instanceof Monster;
+		return target instanceof Enemy;
+	}
+	private boolean isValidCombatTarget(LivingEntity target, ServerLevel level) {
+		return isValidCombatTarget(target);
 	}
 
 	private boolean isFriendlyEntity(LivingEntity entity) {
@@ -1322,11 +1366,11 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 	}
 
-	private static final class SwordsmanNearestHostileTargetGoal extends NearestAttackableTargetGoal<Monster> {
+	private static final class SwordsmanNearestHostileTargetGoal extends NearestAttackableTargetGoal<Mob> {
 		private final CastleSoldierEntity soldier;
 
 		private SwordsmanNearestHostileTargetGoal(CastleSoldierEntity soldier) {
-			super(soldier, Monster.class, true);
+			super(soldier, Mob.class, 10, true, false, soldier::isValidCombatTarget);
 			this.soldier = soldier;
 		}
 
@@ -1341,11 +1385,11 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 	}
 
-	private static final class ArcherNearestHostileTargetGoal extends NearestAttackableTargetGoal<Monster> {
+	private static final class ArcherNearestHostileTargetGoal extends NearestAttackableTargetGoal<Mob> {
 		private final CastleSoldierEntity soldier;
 
 		private ArcherNearestHostileTargetGoal(CastleSoldierEntity soldier) {
-			super(soldier, Monster.class, true);
+			super(soldier, Mob.class, 10, true, false, soldier::isValidCombatTarget);
 			this.soldier = soldier;
 		}
 
@@ -1412,7 +1456,10 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 			soldier.getLookControl().setLookAt(target, 30.0F, 30.0F);
 
-			if (distanceToTargetSqr > attackRangeSqr || !hasLineOfSight) {
+			if (distanceToTargetSqr <= ARCHER_RETREAT_DISTANCE_SQR && hasLineOfSight) {
+				Vec3 retreatAnchor = soldier.getArcherRetreatAnchor(target);
+				soldier.getNavigation().moveTo(retreatAnchor.x, retreatAnchor.y, retreatAnchor.z, speedModifier);
+			} else if (distanceToTargetSqr > attackRangeSqr || !hasLineOfSight) {
 				soldier.getNavigation().moveTo(target, speedModifier);
 			} else {
 				soldier.getNavigation().stop();
