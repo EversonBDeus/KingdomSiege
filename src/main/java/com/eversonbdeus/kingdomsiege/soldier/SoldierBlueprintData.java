@@ -364,6 +364,14 @@ public record SoldierBlueprintData(
 
 		ItemStack sanitized = stack.copy();
 		sanitized.setCount(1);
+
+		// O peitoral do craft não segue para a entidade como armadura equipável.
+		// Nesta etapa ele vira apenas perfil interno de defesa, então a durabilidade
+		// usada no item consumido não deve contaminar o blueprint salvo.
+		if (sanitized.isDamageableItem()) {
+			sanitized.setDamageValue(0);
+		}
+
 		return sanitized;
 	}
 

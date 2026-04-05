@@ -2,7 +2,6 @@ package com.eversonbdeus.kingdomsiege.recipe;
 
 import com.eversonbdeus.kingdomsiege.registry.ModItems;
 import com.eversonbdeus.kingdomsiege.registry.ModRecipes;
-import com.eversonbdeus.kingdomsiege.soldier.ArmorTier;
 import com.eversonbdeus.kingdomsiege.soldier.SoldierBlueprintData;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -11,8 +10,8 @@ import net.minecraft.world.item.crafting.CustomRecipe;
 import net.minecraft.world.item.crafting.RecipeSerializer;
 import net.minecraft.world.level.Level;
 
-public class ArcherSoldierRecipe extends CustomRecipe {
-	public ArcherSoldierRecipe() {
+public class SwordsmanSoldierRecipe extends CustomRecipe {
+	public SwordsmanSoldierRecipe() {
 		super();
 	}
 
@@ -29,13 +28,13 @@ public class ArcherSoldierRecipe extends CustomRecipe {
 			return ItemStack.EMPTY;
 		}
 
-		SoldierBlueprintData blueprint = SoldierBlueprintData.archerFromCraft(validatedInput.bowStack(), validatedInput.chestplateStack());
+		SoldierBlueprintData blueprint = SoldierBlueprintData.swordsmanFromCraft(validatedInput.swordStack(), validatedInput.chestplateStack());
 		return ModItems.createConfiguredSoldierEgg(blueprint);
 	}
 
 	@Override
-	public RecipeSerializer<ArcherSoldierRecipe> getSerializer() {
-		return ModRecipes.ARCHER_SOLDIER;
+	public RecipeSerializer<SwordsmanSoldierRecipe> getSerializer() {
+		return ModRecipes.SWORDSMAN_SOLDIER;
 	}
 
 	private ValidatedInput getValidatedInput(CraftingInput input) {
@@ -43,7 +42,7 @@ public class ArcherSoldierRecipe extends CustomRecipe {
 			return null;
 		}
 
-		ItemStack bowStack = input.getItem(2, 0);
+		ItemStack swordStack = input.getItem(2, 0);
 		ItemStack chestplateStack = input.getItem(1, 1);
 		ItemStack soldierCoreStack = input.getItem(0, 2);
 
@@ -60,11 +59,14 @@ public class ArcherSoldierRecipe extends CustomRecipe {
 			return null;
 		}
 
-		if (!bowStack.is(Items.BOW)) {
+		EquipmentPattern swordPattern = EquipmentPattern.fromSword(swordStack);
+		EquipmentPattern chestplatePattern = EquipmentPattern.fromChestplate(chestplateStack);
+
+		if (swordPattern == null || chestplatePattern == null) {
 			return null;
 		}
 
-		if (!isSupportedChestplate(chestplateStack)) {
+		if (swordPattern != chestplatePattern) {
 			return null;
 		}
 
@@ -74,17 +76,7 @@ public class ArcherSoldierRecipe extends CustomRecipe {
 			return null;
 		}
 
-		return new ValidatedInput(bowStack, chestplateStack);
-	}
-
-	private static boolean isSupportedChestplate(ItemStack stack) {
-		if (stack == null || stack.isEmpty()) {
-			return false;
-		}
-
-		return switch (ArmorTier.fromChestplate(stack)) {
-			case LEATHER, CHAIN, IRON, GOLD, DIAMOND, NETHERITE -> true;
-		};
+		return new ValidatedInput(swordStack, chestplateStack);
 	}
 
 	private static boolean isUsedChestplate(ItemStack stack) {
@@ -98,6 +90,61 @@ public class ArcherSoldierRecipe extends CustomRecipe {
 		return stack == null || stack.isEmpty();
 	}
 
-	private record ValidatedInput(ItemStack bowStack, ItemStack chestplateStack) {
+	private enum EquipmentPattern {
+		IRON,
+		GOLD,
+		DIAMOND,
+		NETHERITE;
+
+		private static EquipmentPattern fromSword(ItemStack stack) {
+			if (stack == null || stack.isEmpty()) {
+				return null;
+			}
+
+			if (stack.is(Items.IRON_SWORD)) {
+				return IRON;
+			}
+
+			if (stack.is(Items.GOLDEN_SWORD)) {
+				return GOLD;
+			}
+
+			if (stack.is(Items.DIAMOND_SWORD)) {
+				return DIAMOND;
+			}
+
+			if (stack.is(Items.NETHERITE_SWORD)) {
+				return NETHERITE;
+			}
+
+			return null;
+		}
+
+		private static EquipmentPattern fromChestplate(ItemStack stack) {
+			if (stack == null || stack.isEmpty()) {
+				return null;
+			}
+
+			if (stack.is(Items.IRON_CHESTPLATE)) {
+				return IRON;
+			}
+
+			if (stack.is(Items.GOLDEN_CHESTPLATE)) {
+				return GOLD;
+			}
+
+			if (stack.is(Items.DIAMOND_CHESTPLATE)) {
+				return DIAMOND;
+			}
+
+			if (stack.is(Items.NETHERITE_CHESTPLATE)) {
+				return NETHERITE;
+			}
+
+			return null;
+		}
+	}
+
+	private record ValidatedInput(ItemStack swordStack, ItemStack chestplateStack) {
 	}
 }
