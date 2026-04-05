@@ -17,21 +17,25 @@ import net.minecraft.world.item.ItemStack;
  *
  * Uso esperado pelas receitas:
  * <pre>
- *   SoldierBlueprintData blueprint = SoldierBlueprintFactory.createSwordsmanBlueprint(swordStack, chestplateStack);
+ *   ItemStack catalystStack = input.getItem(2, 2);
+ *   SoldierBlueprintData blueprint = SoldierBlueprintFactory.createSwordsmanBlueprint(
+ *       swordStack, chestplateStack, catalystStack
+ *   );
  *   return ModItems.createConfiguredSoldierEgg(blueprint);
  * </pre>
  *
- * Referência: doc 12 do projeto Kingdom Siege (Fase 1, item 5.1.5).
+ * Referência: doc 12 do projeto Kingdom Siege (Fase 1, item 5.1.5) + Etapa 8.
  */
 public final class SoldierBlueprintFactory {
 
     private SoldierBlueprintFactory() {
     }
 
-    // ─── Criação a partir do craft ────────────────────────────────────────────
+    // ─── Criação a partir do craft (com catalisador — Etapa 8) ───────────────
 
     /**
-     * Cria um blueprint de espadachim a partir dos itens do craft.
+     * Cria um blueprint de espadachim a partir dos itens do craft,
+     * incluindo o catalisador lido da grade.
      *
      * A espada define:
      *   — classe (SWORDSMAN)
@@ -44,16 +48,42 @@ public final class SoldierBlueprintFactory {
      *   — vida bônus e armadura interna
      *   — encantamentos herdados do peitoral (Protection, Thorns, etc.)
      *
+     * O catalisador define:
+     *   — especialização da unidade (SHIELD, EMERALD, BOOK, etc.)
+     *   — se o slot estiver vazio, CatalystType.NONE é aplicado automaticamente
+     *
      * @param swordStack      espada usada no craft (não pode ser null nem empty)
      * @param chestplateStack peitoral usado no craft (não pode ser null nem empty)
+     * @param catalystStack   item do slot de catalisador (pode ser EMPTY = NONE)
      * @return blueprint completo pronto para ser gravado no item de spawn
      */
-    public static SoldierBlueprintData createSwordsmanBlueprint(ItemStack swordStack, ItemStack chestplateStack) {
-        return SoldierBlueprintData.swordsmanFromCraft(swordStack, chestplateStack);
+    public static SoldierBlueprintData createSwordsmanBlueprint(
+            ItemStack swordStack,
+            ItemStack chestplateStack,
+            ItemStack catalystStack
+    ) {
+        CatalystType catalystType = CatalystType.fromItem(catalystStack);
+        return SoldierBlueprintData.swordsmanFromCraft(swordStack, chestplateStack, catalystType);
     }
 
     /**
-     * Cria um blueprint de arqueiro a partir dos itens do craft.
+     * Cria um blueprint de espadachim sem catalisador.
+     * Mantido para compatibilidade e uso em helpers de conveniência.
+     *
+     * @param swordStack      espada usada no craft
+     * @param chestplateStack peitoral usado no craft
+     * @return blueprint com CatalystType.NONE
+     */
+    public static SoldierBlueprintData createSwordsmanBlueprint(
+            ItemStack swordStack,
+            ItemStack chestplateStack
+    ) {
+        return createSwordsmanBlueprint(swordStack, chestplateStack, ItemStack.EMPTY);
+    }
+
+    /**
+     * Cria um blueprint de arqueiro a partir dos itens do craft,
+     * incluindo o catalisador lido da grade.
      *
      * O arco define:
      *   — classe (ARCHER)
@@ -65,12 +95,37 @@ public final class SoldierBlueprintFactory {
      *   — vida bônus e armadura interna
      *   — encantamentos herdados do peitoral
      *
+     * O catalisador define:
+     *   — especialização da unidade
+     *   — se o slot estiver vazio, CatalystType.NONE é aplicado automaticamente
+     *
      * @param bowStack        arco usado no craft (não pode ser null nem empty)
      * @param chestplateStack peitoral usado no craft (não pode ser null nem empty)
+     * @param catalystStack   item do slot de catalisador (pode ser EMPTY = NONE)
      * @return blueprint completo pronto para ser gravado no item de spawn
      */
-    public static SoldierBlueprintData createArcherBlueprint(ItemStack bowStack, ItemStack chestplateStack) {
-        return SoldierBlueprintData.archerFromCraft(bowStack, chestplateStack);
+    public static SoldierBlueprintData createArcherBlueprint(
+            ItemStack bowStack,
+            ItemStack chestplateStack,
+            ItemStack catalystStack
+    ) {
+        CatalystType catalystType = CatalystType.fromItem(catalystStack);
+        return SoldierBlueprintData.archerFromCraft(bowStack, chestplateStack, catalystType);
+    }
+
+    /**
+     * Cria um blueprint de arqueiro sem catalisador.
+     * Mantido para compatibilidade e uso em helpers de conveniência.
+     *
+     * @param bowStack        arco usado no craft
+     * @param chestplateStack peitoral usado no craft
+     * @return blueprint com CatalystType.NONE
+     */
+    public static SoldierBlueprintData createArcherBlueprint(
+            ItemStack bowStack,
+            ItemStack chestplateStack
+    ) {
+        return createArcherBlueprint(bowStack, chestplateStack, ItemStack.EMPTY);
     }
 
     // ─── Criação por conveniência (sem craft real) ────────────────────────────

@@ -72,10 +72,6 @@ public record SoldierBlueprintData(
 				: WeaponClass.fromSoldierClass(soldierClass);
 		catalystType = catalystType != null ? catalystType : CatalystType.NONE;
 
-		// Importante:
-		// Não gerar ItemStack padrão aqui durante decode de codec/datapack.
-		// Quando a recipe vier sem weapon_stack/chestplate_stack, mantemos EMPTY
-		// para evitar crash no carregamento de mundo.
 		weaponStack = sanitizeStoredStack(weaponStack);
 		chestplateStack = sanitizeStoredStack(chestplateStack);
 		inheritedProtectionLevel = sanitizeEnchantmentLevel(inheritedProtectionLevel);
@@ -147,21 +143,31 @@ public record SoldierBlueprintData(
 				CatalystType.NONE,
 				defaultWeaponStack(soldierClass),
 				defaultChestplateStack(armorTier),
-				0,
-				0,
-				0,
-				0,
-				0,
-				0,
-				0,
-				0,
-				0,
-				0,
-				0
+				0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 		);
 	}
 
+	// ─── ETAPA 8 — factory methods com CatalystType ───────────────────────────
+
+	/**
+	 * Cria blueprint de espadachim sem catalisador.
+	 * Delega para o overload de 3 parâmetros com CatalystType.NONE.
+	 */
 	public static SoldierBlueprintData swordsmanFromCraft(ItemStack swordStack, ItemStack chestplateStack) {
+		return swordsmanFromCraft(swordStack, chestplateStack, CatalystType.NONE);
+	}
+
+	/**
+	 * Cria blueprint de espadachim com catalisador já resolvido.
+	 * Chamado por SoldierBlueprintFactory.createSwordsmanBlueprint(sword, chest, catalystStack).
+	 *
+	 * @param catalystType catalisador já resolvido via CatalystType.fromItem()
+	 */
+	public static SoldierBlueprintData swordsmanFromCraft(
+			ItemStack swordStack,
+			ItemStack chestplateStack,
+			CatalystType catalystType
+	) {
 		ArmorTier armorTier = ArmorTier.fromChestplate(chestplateStack);
 		InheritedEnchantments inheritedEnchantments = InheritedEnchantments.fromSwordsmanCraft(swordStack, chestplateStack);
 
@@ -169,7 +175,7 @@ public record SoldierBlueprintData(
 				SoldierClass.SWORDSMAN,
 				armorTier,
 				WeaponClass.SWORD,
-				CatalystType.GOLDEN_APPLE,
+				catalystType != null ? catalystType : CatalystType.NONE,
 				sanitizeCraftSwordStack(swordStack),
 				sanitizeCraftChestplateStack(chestplateStack),
 				inheritedEnchantments.protectionLevel(),
@@ -186,7 +192,25 @@ public record SoldierBlueprintData(
 		);
 	}
 
+	/**
+	 * Cria blueprint de arqueiro sem catalisador.
+	 * Delega para o overload de 3 parâmetros com CatalystType.NONE.
+	 */
 	public static SoldierBlueprintData archerFromCraft(ItemStack bowStack, ItemStack chestplateStack) {
+		return archerFromCraft(bowStack, chestplateStack, CatalystType.NONE);
+	}
+
+	/**
+	 * Cria blueprint de arqueiro com catalisador já resolvido.
+	 * Chamado por SoldierBlueprintFactory.createArcherBlueprint(bow, chest, catalystStack).
+	 *
+	 * @param catalystType catalisador já resolvido via CatalystType.fromItem()
+	 */
+	public static SoldierBlueprintData archerFromCraft(
+			ItemStack bowStack,
+			ItemStack chestplateStack,
+			CatalystType catalystType
+	) {
 		ArmorTier armorTier = ArmorTier.fromChestplate(chestplateStack);
 		InheritedEnchantments inheritedEnchantments = InheritedEnchantments.fromArcherCraft(bowStack, chestplateStack);
 
@@ -194,7 +218,7 @@ public record SoldierBlueprintData(
 				SoldierClass.ARCHER,
 				armorTier,
 				WeaponClass.BOW,
-				CatalystType.GOLDEN_APPLE,
+				catalystType != null ? catalystType : CatalystType.NONE,
 				sanitizeCraftBowStack(bowStack),
 				sanitizeCraftChestplateStack(chestplateStack),
 				inheritedEnchantments.protectionLevel(),
@@ -211,11 +235,12 @@ public record SoldierBlueprintData(
 		);
 	}
 
+	// ─── Cálculos derivados ───────────────────────────────────────────────────
+
 	public double getBaseAttackDamage() {
 		if (weaponClass == WeaponClass.BOW) {
 			return DEFAULT_ARCHER_MELEE_DAMAGE;
 		}
-
 		return resolveSwordAttackDamage(weaponStack);
 	}
 
@@ -223,7 +248,6 @@ public record SoldierBlueprintData(
 		if (weaponClass != WeaponClass.BOW) {
 			return 0.0D;
 		}
-
 		return DEFAULT_ARCHER_PROJECTILE_DAMAGE;
 	}
 
@@ -260,6 +284,8 @@ public record SoldierBlueprintData(
 				|| inheritedFlameLevel() > 0;
 	}
 
+	// ─── Privados ─────────────────────────────────────────────────────────────
+
 	private int getEffectiveChestplateEnchantmentLevel(int storedLevel, ResourceKey<Enchantment> enchantmentKey) {
 		return getEffectiveEnchantmentLevel(storedLevel, chestplateStack, enchantmentKey);
 	}
@@ -279,15 +305,12 @@ public record SoldierBlueprintData(
 		if (stack == null || stack.isEmpty()) {
 			return 0;
 		}
-
 		ItemEnchantments enchantments = stack.getEnchantments();
-
 		for (Object2IntMap.Entry<Holder<Enchantment>> entry : enchantments.entrySet()) {
 			if (entry.getKey().is(enchantmentKey)) {
 				return sanitizeEnchantmentLevel(entry.getIntValue());
 			}
 		}
-
 		return 0;
 	}
 
@@ -296,102 +319,66 @@ public record SoldierBlueprintData(
 	}
 
 	private static double resolveSwordAttackDamage(ItemStack stack) {
-		if (stack == null || stack.isEmpty()) {
-			return 6.0D;
-		}
-
-		if (stack.is(Items.WOODEN_SWORD)) {
-			return 4.0D;
-		}
-
-		if (stack.is(Items.STONE_SWORD)) {
-			return 5.0D;
-		}
-
-		if (stack.is(Items.IRON_SWORD)) {
-			return 6.0D;
-		}
-
-		if (stack.is(Items.GOLDEN_SWORD)) {
-			return 4.0D;
-		}
-
-		if (stack.is(Items.DIAMOND_SWORD)) {
-			return 7.0D;
-		}
-
-		if (stack.is(Items.NETHERITE_SWORD)) {
-			return 8.0D;
-		}
-
+		if (stack == null || stack.isEmpty()) return 6.0D;
+		if (stack.is(Items.WOODEN_SWORD))    return 4.0D;
+		if (stack.is(Items.STONE_SWORD))     return 5.0D;
+		if (stack.is(Items.IRON_SWORD))      return 6.0D;
+		if (stack.is(Items.GOLDEN_SWORD))    return 4.0D;
+		if (stack.is(Items.DIAMOND_SWORD))   return 7.0D;
+		if (stack.is(Items.NETHERITE_SWORD)) return 8.0D;
 		return 6.0D;
 	}
 
 	private static ItemStack sanitizeStoredStack(ItemStack stack) {
-		if (stack == null || stack.isEmpty()) {
-			return ItemStack.EMPTY;
-		}
-
+		if (stack == null || stack.isEmpty()) return ItemStack.EMPTY;
 		ItemStack sanitized = stack.copy();
 		sanitized.setCount(1);
 		return sanitized;
 	}
 
 	private static ItemStack sanitizeCraftSwordStack(ItemStack stack) {
-		if (stack == null || stack.isEmpty()) {
-			return defaultWeaponStack(SoldierClass.SWORDSMAN);
-		}
-
+		if (stack == null || stack.isEmpty()) return defaultWeaponStack(SoldierClass.SWORDSMAN);
 		ItemStack sanitized = stack.copy();
 		sanitized.setCount(1);
 		return sanitized;
 	}
 
 	private static ItemStack sanitizeCraftBowStack(ItemStack stack) {
-		if (stack == null || stack.isEmpty()) {
-			return defaultWeaponStack(SoldierClass.ARCHER);
-		}
-
+		if (stack == null || stack.isEmpty()) return defaultWeaponStack(SoldierClass.ARCHER);
 		ItemStack sanitized = stack.copy();
 		sanitized.setCount(1);
 		return sanitized;
 	}
 
 	private static ItemStack sanitizeCraftChestplateStack(ItemStack stack) {
-		if (stack == null || stack.isEmpty()) {
-			return defaultChestplateStack(ArmorTier.LEATHER);
-		}
-
+		if (stack == null || stack.isEmpty()) return defaultChestplateStack(ArmorTier.LEATHER);
 		ItemStack sanitized = stack.copy();
 		sanitized.setCount(1);
-
-		// O peitoral do craft não segue para a entidade como armadura equipável.
-		// Nesta etapa ele vira apenas perfil interno de defesa, então a durabilidade
-		// usada no item consumido não deve contaminar o blueprint salvo.
 		if (sanitized.isDamageableItem()) {
 			sanitized.setDamageValue(0);
 		}
-
 		return sanitized;
 	}
 
 	private static ItemStack defaultWeaponStack(SoldierClass soldierClass) {
 		return switch (soldierClass) {
-			case ARCHER -> new ItemStack(Items.BOW);
+			case ARCHER   -> new ItemStack(Items.BOW);
 			case SWORDSMAN -> new ItemStack(Items.IRON_SWORD);
 		};
 	}
 
 	private static ItemStack defaultChestplateStack(ArmorTier armorTier) {
 		return switch (armorTier) {
-			case CHAIN -> new ItemStack(Items.CHAINMAIL_CHESTPLATE);
-			case IRON -> new ItemStack(Items.IRON_CHESTPLATE);
-			case GOLD -> new ItemStack(Items.GOLDEN_CHESTPLATE);
-			case DIAMOND -> new ItemStack(Items.DIAMOND_CHESTPLATE);
+			case CHAIN     -> new ItemStack(Items.CHAINMAIL_CHESTPLATE);
+			case IRON      -> new ItemStack(Items.IRON_CHESTPLATE);
+			case GOLD      -> new ItemStack(Items.GOLDEN_CHESTPLATE);
+			case DIAMOND   -> new ItemStack(Items.DIAMOND_CHESTPLATE);
 			case NETHERITE -> new ItemStack(Items.NETHERITE_CHESTPLATE);
-			case LEATHER -> new ItemStack(Items.LEATHER_CHESTPLATE);
+			case LEATHER   -> new ItemStack(Items.LEATHER_CHESTPLATE);
 		};
 	}
+
+	// ─── InheritedEnchantments (inner record) ─────────────────────────────────
 
 	private record InheritedEnchantments(
 			int protectionLevel,
@@ -453,7 +440,6 @@ public record SoldierBlueprintData(
 					0
 			);
 		}
-
 
 		private static int resolveArcherFlameLevel(ItemStack bowStack) {
 			return Math.max(
