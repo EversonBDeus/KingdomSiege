@@ -3,6 +3,7 @@ package com.eversonbdeus.kingdomsiege.registry;
 import com.eversonbdeus.kingdomsiege.KingdomSiege;
 import com.eversonbdeus.kingdomsiege.soldier.SoldierBlueprintData;
 import com.eversonbdeus.kingdomsiege.soldier.SoldierClass;
+import com.eversonbdeus.kingdomsiege.soldier.SoldierIdentityData;
 import net.minecraft.core.Registry;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -26,6 +27,17 @@ public final class ModDataComponents {
             Identifier.fromNamespaceAndPath(KingdomSiege.MOD_ID, "soldier_blueprint"),
             DataComponentType.<SoldierBlueprintData>builder()
                     .persistent(SoldierBlueprintData.CODEC)
+                    .build()
+    );
+
+    // Identidade persistida da unidade: nome, rank, título ativo e XP militar.
+    // Separado do blueprint porque a identidade muda com o tempo;
+    // o blueprint é fixo desde o craft.
+    public static final DataComponentType<SoldierIdentityData> SOLDIER_IDENTITY = Registry.register(
+            BuiltInRegistries.DATA_COMPONENT_TYPE,
+            Identifier.fromNamespaceAndPath(KingdomSiege.MOD_ID, "soldier_identity"),
+            DataComponentType.<SoldierIdentityData>builder()
+                    .persistent(SoldierIdentityData.CODEC)
                     .build()
     );
 
