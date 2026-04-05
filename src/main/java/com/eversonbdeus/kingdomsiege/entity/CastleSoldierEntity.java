@@ -91,6 +91,9 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final double FOLLOW_MOVE_SPEED = 1.15D;
 	private static final double FOLLOW_REJOIN_DISTANCE = 24.0D;
 	private static final double FOLLOW_REJOIN_DISTANCE_SQR = FOLLOW_REJOIN_DISTANCE * FOLLOW_REJOIN_DISTANCE;
+	private static final double GUARD_MOVE_SPEED = 1.0D;
+	private static final double GUARD_RETURN_BUFFER = 1.5D;
+	private static final double GUARD_CHASE_LEASH = 4.0D;
 	private static final int DEFAULT_GUARD_RADIUS = 8;
 
 	private SoldierBlueprintData soldierBlueprint = SoldierBlueprintData.defaultRecruit();
@@ -304,9 +307,10 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		goalSelector.addGoal(1, new SwordsmanMeleeAttackGoal(this, SWORDSMAN_MELEE_SPEED, true));
 		goalSelector.addGoal(1, new ArcherRangedAttackGoal(this, ARCHER_MOVE_SPEED, ARCHER_ATTACK_RANGE));
 		goalSelector.addGoal(2, new FollowOwnerGoal(this, FOLLOW_MOVE_SPEED, FOLLOW_START_DISTANCE, FOLLOW_STOP_DISTANCE));
-		goalSelector.addGoal(3, new GuardModeRandomStrollGoal(this, 1.0D));
-		goalSelector.addGoal(4, new LookAtPlayerGoal(this, Player.class, 8.0F));
-		goalSelector.addGoal(5, new RandomLookAroundGoal(this));
+		goalSelector.addGoal(3, new ReturnToHomePosGoal(this, GUARD_MOVE_SPEED));
+		goalSelector.addGoal(4, new GuardModeRandomStrollGoal(this, GUARD_MOVE_SPEED));
+		goalSelector.addGoal(5, new LookAtPlayerGoal(this, Player.class, 8.0F));
+		goalSelector.addGoal(6, new RandomLookAroundGoal(this));
 
 		targetSelector.addGoal(0, new ProtectOwnerWhenHurtGoal(this));
 		targetSelector.addGoal(1, new AssistOwnerAttackTargetGoal(this));
@@ -537,6 +541,10 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	}
 
 	private boolean shouldDisengageFromTarget(LivingEntity target) {
+		if (isGuardMode()) {
+			return isOutsideGuardChaseLimit(target);
+		}
+
 		if (!isFollowMode()) {
 			return false;
 		}
@@ -552,6 +560,39 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 
 		return target.distanceToSqr(owner) > OWNER_PROTECT_RANGE_SQR;
+	}
+
+	private boolean shouldReturnToHomePos() {
+		return isGuardMode()
+				&& getTarget() == null
+				&& hasHomePos()
+				&& position().distanceToSqr(getHomeAnchor()) > getGuardReturnDistanceSqr();
+	}
+
+	private boolean isOutsideGuardChaseLimit(LivingEntity target) {
+		if (!isGuardMode() || target == null || !hasHomePos()) {
+			return false;
+		}
+
+		return target.position().distanceToSqr(getHomeAnchor()) > getGuardChaseLimitSqr();
+	}
+
+	private double getGuardReturnDistanceSqr() {
+		double returnDistance = guardRadius + GUARD_RETURN_BUFFER;
+		return returnDistance * returnDistance;
+	}
+
+	private double getGuardChaseLimitSqr() {
+		double chaseLimit = guardRadius + GUARD_CHASE_LEASH;
+		return chaseLimit * chaseLimit;
+	}
+
+	private Vec3 getHomeAnchor() {
+		if (!hasHomePos()) {
+			return position();
+		}
+
+		return Vec3.atBottomCenterOf(homePos);
 	}
 
 	private Vec3 getFollowAnchor(Player owner) {
@@ -1388,6 +1429,50 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 	}
 
+	private static final class ReturnToHomePosGoal extends Goal {
+		private final CastleSoldierEntity soldier;
+		private final double speedModifier;
+		private int timeToRecalculatePath;
+
+		private ReturnToHomePosGoal(CastleSoldierEntity soldier, double speedModifier) {
+			this.soldier = soldier;
+			this.speedModifier = speedModifier;
+			this.timeToRecalculatePath = 0;
+			setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK));
+		}
+
+		@Override
+		public boolean canUse() {
+			return soldier.shouldReturnToHomePos();
+		}
+
+		@Override
+		public boolean canContinueToUse() {
+			return soldier.shouldReturnToHomePos();
+		}
+
+		@Override
+		public void start() {
+			timeToRecalculatePath = 0;
+		}
+
+		@Override
+		public void stop() {
+			soldier.getNavigation().stop();
+		}
+
+		@Override
+		public void tick() {
+			Vec3 homeAnchor = soldier.getHomeAnchor();
+			soldier.getLookControl().setLookAt(homeAnchor.x, homeAnchor.y, homeAnchor.z, 30.0F, 30.0F);
+
+			if (--timeToRecalculatePath <= 0) {
+				timeToRecalculatePath = 10;
+				soldier.getNavigation().moveTo(homeAnchor.x, homeAnchor.y, homeAnchor.z, speedModifier);
+			}
+		}
+	}
+
 	private static final class GuardModeRandomStrollGoal extends RandomStrollGoal {
 		private final CastleSoldierEntity soldier;
 
@@ -1398,12 +1483,16 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		@Override
 		public boolean canUse() {
-			return soldier.isGuardMode() && super.canUse();
+			return soldier.isGuardMode()
+					&& !soldier.shouldReturnToHomePos()
+					&& super.canUse();
 		}
 
 		@Override
 		public boolean canContinueToUse() {
-			return soldier.isGuardMode() && super.canContinueToUse();
+			return soldier.isGuardMode()
+					&& !soldier.shouldReturnToHomePos()
+					&& super.canContinueToUse();
 		}
 	}
 
