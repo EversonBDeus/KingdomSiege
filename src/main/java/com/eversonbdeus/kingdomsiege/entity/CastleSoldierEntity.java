@@ -97,6 +97,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private BlockPos homePos;
 	private int guardRadius = DEFAULT_GUARD_RADIUS;
 
+
+
 	public CastleSoldierEntity(Level level) {
 		this(ModEntities.CASTLE_SOLDIER, level);
 	}
@@ -326,24 +328,22 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	}
 
 	@Override
-	public boolean hurtServer(ServerLevel serverLevel, DamageSource damageSource, float amount) {
-		if (isFriendlyDamageSource(damageSource)) {
+	public boolean hurtServer(ServerLevel level, DamageSource source, float amount) {
+		if (isBlockedDamageFromOwner(source)) {
 			return false;
 		}
 
-		float adjustedAmount = applyInheritedDefensiveEnchantments(damageSource, amount);
+		return super.hurtServer(level, source, amount);
+	}
 
-		if (adjustedAmount <= 0.0F) {
-			return false;
-		}
+	private boolean isBlockedDamageFromOwner(DamageSource source) {
+		return isOwnerEntity(source.getEntity()) || isOwnerEntity(source.getDirectEntity());
+	}
 
-		boolean damaged = super.hurtServer(serverLevel, damageSource, adjustedAmount);
-
-		if (damaged) {
-			applyInheritedThorns(serverLevel, damageSource);
-		}
-
-		return damaged;
+	private boolean isOwnerEntity(Entity entity) {
+		return entity != null
+				&& this.ownerUuid != null
+				&& this.ownerUuid.equals(entity.getUUID());
 	}
 
 	@Override
