@@ -91,6 +91,50 @@ public record SoldierBlueprintData(
 		inheritedFlameLevel = sanitizeEnchantmentLevel(inheritedFlameLevel);
 	}
 
+	public int inheritedProtectionLevel() {
+		return getEffectiveChestplateEnchantmentLevel(inheritedProtectionLevel, Enchantments.PROTECTION);
+	}
+
+	public int inheritedProjectileProtectionLevel() {
+		return getEffectiveChestplateEnchantmentLevel(inheritedProjectileProtectionLevel, Enchantments.PROJECTILE_PROTECTION);
+	}
+
+	public int inheritedBlastProtectionLevel() {
+		return getEffectiveChestplateEnchantmentLevel(inheritedBlastProtectionLevel, Enchantments.BLAST_PROTECTION);
+	}
+
+	public int inheritedFireProtectionLevel() {
+		return getEffectiveChestplateEnchantmentLevel(inheritedFireProtectionLevel, Enchantments.FIRE_PROTECTION);
+	}
+
+	public int inheritedThornsLevel() {
+		return getEffectiveChestplateEnchantmentLevel(inheritedThornsLevel, Enchantments.THORNS);
+	}
+
+	public int inheritedSharpnessLevel() {
+		return getEffectiveWeaponEnchantmentLevel(inheritedSharpnessLevel, Enchantments.SHARPNESS);
+	}
+
+	public int inheritedFireAspectLevel() {
+		return getEffectiveWeaponEnchantmentLevel(inheritedFireAspectLevel, Enchantments.FIRE_ASPECT);
+	}
+
+	public int inheritedKnockbackLevel() {
+		return getEffectiveWeaponEnchantmentLevel(inheritedKnockbackLevel, Enchantments.KNOCKBACK);
+	}
+
+	public int inheritedPowerLevel() {
+		return getEffectiveWeaponEnchantmentLevel(inheritedPowerLevel, Enchantments.POWER);
+	}
+
+	public int inheritedPunchLevel() {
+		return getEffectiveWeaponEnchantmentLevel(inheritedPunchLevel, Enchantments.PUNCH);
+	}
+
+	public int inheritedFlameLevel() {
+		return getEffectiveWeaponEnchantmentLevel(inheritedFlameLevel, Enchantments.FLAME);
+	}
+
 	public static SoldierBlueprintData defaultRecruit() {
 		return of(SoldierClass.SWORDSMAN, ArmorTier.LEATHER);
 	}
@@ -200,20 +244,35 @@ public record SoldierBlueprintData(
 	}
 
 	public boolean hasInheritedChestplateEnchantments() {
-		return inheritedProtectionLevel > 0
-				|| inheritedProjectileProtectionLevel > 0
-				|| inheritedBlastProtectionLevel > 0
-				|| inheritedFireProtectionLevel > 0
-				|| inheritedThornsLevel > 0;
+		return inheritedProtectionLevel() > 0
+				|| inheritedProjectileProtectionLevel() > 0
+				|| inheritedBlastProtectionLevel() > 0
+				|| inheritedFireProtectionLevel() > 0
+				|| inheritedThornsLevel() > 0;
 	}
 
 	public boolean hasInheritedWeaponEnchantments() {
-		return inheritedSharpnessLevel > 0
-				|| inheritedFireAspectLevel > 0
-				|| inheritedKnockbackLevel > 0
-				|| inheritedPowerLevel > 0
-				|| inheritedPunchLevel > 0
-				|| inheritedFlameLevel > 0;
+		return inheritedSharpnessLevel() > 0
+				|| inheritedFireAspectLevel() > 0
+				|| inheritedKnockbackLevel() > 0
+				|| inheritedPowerLevel() > 0
+				|| inheritedPunchLevel() > 0
+				|| inheritedFlameLevel() > 0;
+	}
+
+	private int getEffectiveChestplateEnchantmentLevel(int storedLevel, ResourceKey<Enchantment> enchantmentKey) {
+		return getEffectiveEnchantmentLevel(storedLevel, chestplateStack, enchantmentKey);
+	}
+
+	private int getEffectiveWeaponEnchantmentLevel(int storedLevel, ResourceKey<Enchantment> enchantmentKey) {
+		return getEffectiveEnchantmentLevel(storedLevel, weaponStack, enchantmentKey);
+	}
+
+	private int getEffectiveEnchantmentLevel(int storedLevel, ItemStack stack, ResourceKey<Enchantment> enchantmentKey) {
+		return Math.max(
+				sanitizeEnchantmentLevel(storedLevel),
+				resolveEnchantmentLevel(stack, enchantmentKey)
+		);
 	}
 
 	private static int resolveEnchantmentLevel(ItemStack stack, ResourceKey<Enchantment> enchantmentKey) {
@@ -387,6 +446,14 @@ public record SoldierBlueprintData(
 			);
 		}
 
+
+		private static int resolveArcherFlameLevel(ItemStack bowStack) {
+			return Math.max(
+					resolveEnchantmentLevel(bowStack, Enchantments.FLAME),
+					resolveEnchantmentLevel(bowStack, Enchantments.FIRE_ASPECT)
+			);
+		}
+
 		private static InheritedEnchantments fromArcherCraft(ItemStack bowStack, ItemStack chestplateStack) {
 			return new InheritedEnchantments(
 					resolveEnchantmentLevel(chestplateStack, Enchantments.PROTECTION),
@@ -399,7 +466,7 @@ public record SoldierBlueprintData(
 					0,
 					resolveEnchantmentLevel(bowStack, Enchantments.POWER),
 					resolveEnchantmentLevel(bowStack, Enchantments.PUNCH),
-					resolveEnchantmentLevel(bowStack, Enchantments.FLAME)
+					resolveArcherFlameLevel(bowStack)
 			);
 		}
 	}

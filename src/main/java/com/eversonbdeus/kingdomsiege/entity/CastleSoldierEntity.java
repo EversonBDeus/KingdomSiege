@@ -69,6 +69,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final double INHERITED_SHARPNESS_DAMAGE_PER_LEVEL = 0.5D;
 	private static final double INHERITED_SHARPNESS_BASE_BONUS = 0.5D;
 	private static final int FIRE_ASPECT_SECONDS_PER_LEVEL = 4;
+	private static final int FLAME_SECONDS_PER_LEVEL = 5;
 	private static final double KNOCKBACK_STRENGTH_PER_LEVEL = 0.5D;
 	private static final double INHERITED_POWER_DAMAGE_PER_LEVEL = 0.5D;
 	private static final double INHERITED_POWER_BASE_BONUS = 0.5D;
@@ -373,8 +374,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			return;
 		}
 
-		int fireTicks = flameLevel * FIRE_ASPECT_SECONDS_PER_LEVEL * 20;
-		float fireSeconds = (float) (flameLevel * FIRE_ASPECT_SECONDS_PER_LEVEL);
+		int fireTicks = flameLevel * FLAME_SECONDS_PER_LEVEL * 20;
+		float fireSeconds = (float) (flameLevel * FLAME_SECONDS_PER_LEVEL);
 
 		arrow.setRemainingFireTicks(fireTicks);
 		arrow.igniteForSeconds(fireSeconds);
@@ -734,10 +735,20 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	}
 
 	private int getEffectiveInheritedFlameLevel() {
-		return resolveEffectiveWeaponEnchantmentLevel(
+		int flameLevel = resolveEffectiveWeaponEnchantmentLevel(
 				soldierBlueprint.inheritedFlameLevel(),
 				Enchantments.FLAME
 		);
+
+		if (flameLevel > 0) {
+			return flameLevel;
+		}
+
+		if (canUseBowCombat()) {
+			return resolveWeaponEnchantmentLevel(Enchantments.FIRE_ASPECT);
+		}
+
+		return 0;
 	}
 
 	private int resolveEffectiveWeaponEnchantmentLevel(int storedLevel, ResourceKey<Enchantment> enchantmentKey) {
@@ -884,10 +895,10 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 					ChatFormatting.GOLD
 			);
 
-			appendFlagInheritanceComponent(
+			appendLevelInheritanceComponent(
 					components,
 					"text.kingdomsiege.inheritance.flame",
-					effectiveFlameLevel > 0,
+					effectiveFlameLevel,
 					ChatFormatting.GOLD
 			);
 

@@ -243,10 +243,10 @@ public class SoldierSpawnEggItem extends SpawnEggItem {
 					ChatFormatting.GOLD
 			);
 
-			appendFlagInheritanceLine(
+			appendLevelInheritanceLine(
 					tooltipAdder,
 					"text.kingdomsiege.inheritance.flame",
-					blueprint.inheritedFlameLevel() > 0,
+					blueprint.inheritedFlameLevel(),
 					ChatFormatting.GOLD
 			);
 
