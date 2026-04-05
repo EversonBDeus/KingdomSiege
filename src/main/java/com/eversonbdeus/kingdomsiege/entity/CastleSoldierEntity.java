@@ -49,6 +49,7 @@ import net.minecraft.world.item.enchantment.ItemEnchantments;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -84,10 +85,11 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final double OWNER_PROTECT_RANGE = 16.0D;
 	private static final double OWNER_PROTECT_RANGE_SQR = OWNER_PROTECT_RANGE * OWNER_PROTECT_RANGE;
 
-	private static final double FOLLOW_START_DISTANCE = 5.0D;
-	private static final double FOLLOW_STOP_DISTANCE = 2.5D;
+	private static final double FOLLOW_START_DISTANCE = 6.0D;
+	private static final double FOLLOW_STOP_DISTANCE = 3.5D;
+	private static final double FOLLOW_DESIRED_DISTANCE = 4.0D;
 	private static final double FOLLOW_MOVE_SPEED = 1.15D;
-	private static final double FOLLOW_REJOIN_DISTANCE = 12.0D;
+	private static final double FOLLOW_REJOIN_DISTANCE = 24.0D;
 	private static final double FOLLOW_REJOIN_DISTANCE_SQR = FOLLOW_REJOIN_DISTANCE * FOLLOW_REJOIN_DISTANCE;
 	private static final int DEFAULT_GUARD_RADIUS = 8;
 
@@ -550,6 +552,20 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 
 		return target.distanceToSqr(owner) > OWNER_PROTECT_RANGE_SQR;
+	}
+
+	private Vec3 getFollowAnchor(Player owner) {
+		Vec3 lookDirection = owner.getLookAngle();
+		Vec3 horizontalLookDirection = new Vec3(lookDirection.x, 0.0D, lookDirection.z);
+
+		if (horizontalLookDirection.lengthSqr() < 1.0E-4D) {
+			horizontalLookDirection = new Vec3(0.0D, 0.0D, 1.0D);
+		} else {
+			horizontalLookDirection = horizontalLookDirection.normalize();
+		}
+
+		Vec3 ownerPosition = owner.position();
+		return ownerPosition.subtract(horizontalLookDirection.scale(FOLLOW_DESIRED_DISTANCE));
 	}
 
 	private void clearCurrentTarget() {
@@ -1464,19 +1480,24 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 			soldier.getLookControl().setLookAt(owner, 30.0F, 30.0F);
 
+			if (distanceToOwnerSqr <= stopDistanceSqr) {
+				soldier.getNavigation().stop();
+				return;
+			}
+
+			Vec3 followAnchor = soldier.getFollowAnchor(owner);
+
 			if (--timeToRecalculatePath <= 0) {
 				timeToRecalculatePath = 10;
-				soldier.getNavigation().moveTo(owner, speedModifier);
+				soldier.getNavigation().moveTo(followAnchor.x, followAnchor.y, followAnchor.z, speedModifier);
 			}
 		}
 
 		private void rejoinNearOwner(Player owner) {
-			double targetX = owner.getX() - owner.getLookAngle().x * 1.5D;
-			double targetY = owner.getY();
-			double targetZ = owner.getZ() - owner.getLookAngle().z * 1.5D;
+			Vec3 followAnchor = soldier.getFollowAnchor(owner);
 
 			soldier.getNavigation().stop();
-			soldier.setPos(targetX, targetY, targetZ);
+			soldier.setPos(followAnchor.x, followAnchor.y, followAnchor.z);
 			soldier.setYRot(owner.getYRot());
 			soldier.setXRot(owner.getXRot());
 			soldier.setDeltaMovement(0.0D, 0.0D, 0.0D);
