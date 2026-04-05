@@ -16,9 +16,15 @@ import net.minecraft.world.item.ItemStack;
 import java.util.function.Function;
 
 public final class ModItems {
+	public static final Item SOLDIER_CORE = register(
+			"soldier_core",
+			Item::new,
+			new Item.Properties().stacksTo(64)
+	);
+
 	public static final Item CASTLE_SOLDIER_SPAWN_EGG = register(
 			"castle_soldier_spawn_egg",
-			properties -> new SoldierSpawnEggItem(SoldierBlueprintData.defaultRecruit(), properties),
+			SoldierSpawnEggItem::new,
 			new Item.Properties().stacksTo(64).spawnEgg(ModEntities.CASTLE_SOLDIER)
 	);
 
@@ -38,8 +44,8 @@ public final class ModItems {
 
 	public static ItemStack createConfiguredSoldierEgg(SoldierBlueprintData blueprint) {
 		ItemStack stack = new ItemStack(CASTLE_SOLDIER_SPAWN_EGG);
-		stack.set(ModComponents.SOLDIER_BLUEPRINT, blueprint);
-		stack.set(ModComponents.SOLDIER_CLASS, blueprint.soldierClass());
+		stack.set(ModDataComponents.SOLDIER_BLUEPRINT, blueprint);
+		stack.set(ModDataComponents.SOLDIER_CLASS, blueprint.soldierClass());
 		return stack;
 	}
 
@@ -57,6 +63,9 @@ public final class ModItems {
 
 	public static void register() {
 		KingdomSiege.LOGGER.info("Registrando itens de {}.", KingdomSiege.MOD_NAME);
+
+		CreativeModeTabEvents.modifyOutputEvent(CreativeModeTabs.INGREDIENTS)
+				.register(entries -> entries.accept(SOLDIER_CORE));
 
 		CreativeModeTabEvents.modifyOutputEvent(CreativeModeTabs.SPAWN_EGGS)
 				.register(entries -> entries.accept(CASTLE_SOLDIER_SPAWN_EGG));

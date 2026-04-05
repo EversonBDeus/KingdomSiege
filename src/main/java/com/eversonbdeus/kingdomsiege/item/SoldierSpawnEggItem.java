@@ -1,7 +1,7 @@
 package com.eversonbdeus.kingdomsiege.item;
 
 import com.eversonbdeus.kingdomsiege.entity.CastleSoldierEntity;
-import com.eversonbdeus.kingdomsiege.registry.ModComponents;
+import com.eversonbdeus.kingdomsiege.registry.ModDataComponents;
 import com.eversonbdeus.kingdomsiege.registry.ModEntities;
 import com.eversonbdeus.kingdomsiege.soldier.ArmorTier;
 import com.eversonbdeus.kingdomsiege.soldier.SoldierBlueprintData;
@@ -32,13 +32,13 @@ public class SoldierSpawnEggItem extends SpawnEggItem {
 	}
 
 	public SoldierBlueprintData getSoldierBlueprint(ItemStack stack) {
-		SoldierBlueprintData storedBlueprint = stack.get(ModComponents.SOLDIER_BLUEPRINT);
+		SoldierBlueprintData storedBlueprint = stack.get(ModDataComponents.SOLDIER_BLUEPRINT);
 
 		if (storedBlueprint != null) {
 			return storedBlueprint;
 		}
 
-		SoldierClass legacyClass = stack.get(ModComponents.SOLDIER_CLASS);
+		SoldierClass legacyClass = stack.get(ModDataComponents.SOLDIER_CLASS);
 		if (legacyClass != null) {
 			return SoldierBlueprintData.of(legacyClass, ArmorTier.LEATHER);
 		}
@@ -55,8 +55,8 @@ public class SoldierSpawnEggItem extends SpawnEggItem {
 				? blueprint
 				: SoldierBlueprintData.defaultRecruit();
 
-		stack.set(ModComponents.SOLDIER_BLUEPRINT, resolvedBlueprint);
-		stack.set(ModComponents.SOLDIER_CLASS, resolvedBlueprint.soldierClass());
+		stack.set(ModDataComponents.SOLDIER_BLUEPRINT, resolvedBlueprint);
+		stack.set(ModDataComponents.SOLDIER_CLASS, resolvedBlueprint.soldierClass());
 	}
 
 	public void setSoldierClass(ItemStack stack, SoldierClass soldierClass) {
