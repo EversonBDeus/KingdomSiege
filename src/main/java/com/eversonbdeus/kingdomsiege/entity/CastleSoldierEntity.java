@@ -37,6 +37,8 @@ import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.ai.goal.RandomStrollGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
+import net.minecraft.world.entity.ai.navigation.GroundPathNavigation;
+import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.monster.RangedAttackMob;
 import net.minecraft.world.entity.player.Player;
@@ -48,6 +50,7 @@ import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.pathfinder.PathType;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.Vec3;
@@ -102,7 +105,33 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final double FOLLOW_MOVE_SPEED = 1.15D;
 	private static final double FOLLOW_REJOIN_DISTANCE = 24.0D;
 	private static final double FOLLOW_REJOIN_DISTANCE_SQR = FOLLOW_REJOIN_DISTANCE * FOLLOW_REJOIN_DISTANCE;
+	private static final int FOLLOW_OWNER_STATIONARY_TICKS = 50;
+	private static final double FOLLOW_OWNER_MOVEMENT_TOLERANCE = 0.04D;
+	private static final double FOLLOW_OWNER_MOVEMENT_TOLERANCE_SQR = FOLLOW_OWNER_MOVEMENT_TOLERANCE * FOLLOW_OWNER_MOVEMENT_TOLERANCE;
+	private static final double FOLLOW_ROAM_MAX_DISTANCE = 8.0D;
+	private static final double FOLLOW_ROAM_MAX_DISTANCE_SQR = FOLLOW_ROAM_MAX_DISTANCE * FOLLOW_ROAM_MAX_DISTANCE;
+	private static final double FOLLOW_ROAM_MIN_RADIUS = 1.75D;
+	private static final double FOLLOW_ROAM_MAX_RADIUS = 3.25D;
+	private static final int FOLLOW_ROAM_RECALCULATE_TICKS = 25;
 	private static final int DEFAULT_GUARD_RADIUS = 8;
+
+	private static final double NAVIGATION_PROGRESS_TOLERANCE = 0.04D;
+	private static final double NAVIGATION_PROGRESS_TOLERANCE_SQR = NAVIGATION_PROGRESS_TOLERANCE * NAVIGATION_PROGRESS_TOLERANCE;
+	private static final int NAVIGATION_REPATH_TICKS = 15;
+	private static final int NAVIGATION_STUCK_TICKS = 22;
+	private static final int NAVIGATION_ASSIST_COOLDOWN_TICKS = 18;
+	private static final double NAVIGATION_CLIMB_ASCENT_SPEED = 0.12D;
+	private static final double NAVIGATION_SWIM_ASCENT_SPEED = 0.08D;
+	private static final double NAVIGATION_JUMP_MIN_TARGET_HEIGHT = 0.25D;
+	private static final double NAVIGATION_JUMP_MAX_TARGET_HEIGHT = 1.25D;
+	private static final double NAVIGATION_JUMP_MIN_TARGET_DISTANCE = 0.75D;
+	private static final double NAVIGATION_JUMP_MIN_TARGET_DISTANCE_SQR = NAVIGATION_JUMP_MIN_TARGET_DISTANCE * NAVIGATION_JUMP_MIN_TARGET_DISTANCE;
+	private static final int MELEE_CRIT_JUMP_COOLDOWN_TICKS = 24;
+	private static final float MELEE_CRIT_JUMP_CHANCE = 0.16F;
+	private static final double MELEE_CRIT_JUMP_MIN_DISTANCE = 1.75D;
+	private static final double MELEE_CRIT_JUMP_MAX_DISTANCE = 3.25D;
+	private static final double MELEE_CRIT_JUMP_MIN_DISTANCE_SQR = MELEE_CRIT_JUMP_MIN_DISTANCE * MELEE_CRIT_JUMP_MIN_DISTANCE;
+	private static final double MELEE_CRIT_JUMP_MAX_DISTANCE_SQR = MELEE_CRIT_JUMP_MAX_DISTANCE * MELEE_CRIT_JUMP_MAX_DISTANCE;
 
 	private SoldierBlueprintData soldierBlueprint = SoldierBlueprintData.defaultRecruit();
 	private SoldierMode soldierMode = SoldierMode.GUARD;
@@ -110,7 +139,12 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private BlockPos homePos;
 	private int guardRadius = DEFAULT_GUARD_RADIUS;
 
-
+	private Vec3 lastOwnerFollowSample;
+	private int ownerStillTicks;
+	private Vec3 lastNavigationProgressSample;
+	private int stationaryNavigationTicks;
+	private int movementAssistCooldown;
+	private int meleeCritJumpCooldown;
 
 	public CastleSoldierEntity(Level level) {
 		this(ModEntities.CASTLE_SOLDIER, level);
@@ -119,6 +153,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	public CastleSoldierEntity(EntityType<? extends CastleSoldierEntity> entityType, Level level) {
 		super(entityType, level);
 		xpReward = 0;
+		configurePathfindingPreferences();
 		refreshDerivedAttributes();
 	}
 
@@ -131,6 +166,22 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				.add(Attributes.ARMOR, BASE_ARMOR)
 				.add(Attributes.ARMOR_TOUGHNESS, BASE_ARMOR_TOUGHNESS)
 				.add(Attributes.KNOCKBACK_RESISTANCE, BASE_KNOCKBACK_RESISTANCE);
+	}
+
+	@Override
+	protected PathNavigation createNavigation(Level level) {
+		GroundPathNavigation navigation = new GroundPathNavigation(this, level);
+		navigation.setCanOpenDoors(true);
+		navigation.setCanFloat(true);
+		return navigation;
+	}
+
+	private void configurePathfindingPreferences() {
+		setPathfindingMalus(PathType.DOOR_OPEN, 0.0F);
+		setPathfindingMalus(PathType.WALKABLE_DOOR, 0.0F);
+		setPathfindingMalus(PathType.DOOR_WOOD_CLOSED, 0.0F);
+		setPathfindingMalus(PathType.WATER, 0.0F);
+		setPathfindingMalus(PathType.WATER_BORDER, 0.0F);
 	}
 
 	public SoldierBlueprintData getSoldierBlueprint() {
@@ -337,8 +388,11 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		super.tick();
 
 		if (!level().isClientSide()) {
+			updateFollowOwnerMotionState();
 			validateOwnerState();
 			validateCurrentTarget();
+			tickAdvancedMovementSupport();
+			tickMeleeCriticalJumpSupport();
 		}
 	}
 
@@ -657,6 +711,223 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		Vec3 ownerPosition = owner.position();
 		return ownerPosition.subtract(horizontalLookDirection.scale(FOLLOW_DESIRED_DISTANCE));
+	}
+
+
+	private Vec3 getFollowRoamAnchor(Player owner) {
+		Vec3 ownerPosition = owner.position();
+
+		for (int attempt = 0; attempt < 6; attempt++) {
+			double angle = getRandom().nextDouble() * Math.PI * 2.0D;
+			double radius = FOLLOW_ROAM_MIN_RADIUS + getRandom().nextDouble() * (FOLLOW_ROAM_MAX_RADIUS - FOLLOW_ROAM_MIN_RADIUS);
+			Vec3 candidate = ownerPosition.add(Math.cos(angle) * radius, 0.0D, Math.sin(angle) * radius);
+
+			if (candidate.distanceToSqr(position()) > 0.75D * 0.75D) {
+				return candidate;
+			}
+		}
+
+		return ownerPosition.add(0.0D, 0.0D, FOLLOW_ROAM_MIN_RADIUS);
+	}
+
+	private boolean hasOwnerBeenStillLongEnough() {
+		return ownerStillTicks >= FOLLOW_OWNER_STATIONARY_TICKS;
+	}
+
+	private boolean shouldRoamAroundStoppedOwner(Player owner) {
+		return isFollowMode()
+				&& getTarget() == null
+				&& owner != null
+				&& hasOwnerBeenStillLongEnough()
+				&& distanceToSqr(owner) <= FOLLOW_ROAM_MAX_DISTANCE_SQR;
+	}
+
+	private void updateFollowOwnerMotionState() {
+		Player owner = getValidOwnerPlayer();
+
+		if (!isFollowMode() || owner == null) {
+			resetFollowOwnerMotionState();
+			return;
+		}
+
+		Vec3 currentOwnerPosition = owner.position();
+
+		if (lastOwnerFollowSample == null) {
+			lastOwnerFollowSample = currentOwnerPosition;
+			ownerStillTicks = 0;
+			return;
+		}
+
+		double movementDistanceSqr = horizontalDistanceSqr(currentOwnerPosition, lastOwnerFollowSample);
+		lastOwnerFollowSample = currentOwnerPosition;
+
+		if (movementDistanceSqr <= FOLLOW_OWNER_MOVEMENT_TOLERANCE_SQR) {
+			ownerStillTicks++;
+			return;
+		}
+
+		ownerStillTicks = 0;
+	}
+
+	private void resetFollowOwnerMotionState() {
+		lastOwnerFollowSample = null;
+		ownerStillTicks = 0;
+	}
+
+	private void tickAdvancedMovementSupport() {
+		if (movementAssistCooldown > 0) {
+			movementAssistCooldown--;
+		}
+
+		if (!hasActiveNavigationTarget()) {
+			resetMovementSupportState();
+			return;
+		}
+
+		Vec3 currentPosition = position();
+
+		if (lastNavigationProgressSample == null) {
+			lastNavigationProgressSample = currentPosition;
+			stationaryNavigationTicks = 0;
+		} else {
+			double movementDistanceSqr = horizontalDistanceSqr(currentPosition, lastNavigationProgressSample);
+
+			if (movementDistanceSqr <= NAVIGATION_PROGRESS_TOLERANCE_SQR) {
+				stationaryNavigationTicks++;
+			} else {
+				stationaryNavigationTicks = 0;
+			}
+
+			lastNavigationProgressSample = currentPosition;
+		}
+
+		if (stationaryNavigationTicks >= NAVIGATION_REPATH_TICKS) {
+			getNavigation().recomputePath();
+		}
+
+		if (shouldTryClimbAssist()) {
+			Vec3 currentDeltaMovement = getDeltaMovement();
+			setDeltaMovement(currentDeltaMovement.x, Math.max(currentDeltaMovement.y, NAVIGATION_CLIMB_ASCENT_SPEED), currentDeltaMovement.z);
+		}
+
+		if (shouldTryWaterAssist()) {
+			Vec3 currentDeltaMovement = getDeltaMovement();
+			setDeltaMovement(currentDeltaMovement.x, Math.max(currentDeltaMovement.y, NAVIGATION_SWIM_ASCENT_SPEED), currentDeltaMovement.z);
+		}
+
+		if (shouldTryJumpAssist()) {
+			getJumpControl().jump();
+			movementAssistCooldown = NAVIGATION_ASSIST_COOLDOWN_TICKS;
+			stationaryNavigationTicks = 0;
+			lastNavigationProgressSample = currentPosition;
+		}
+	}
+
+	private boolean hasActiveNavigationTarget() {
+		return !getNavigation().isDone() || getNavigation().getTargetPos() != null;
+	}
+
+	private void resetMovementSupportState() {
+		lastNavigationProgressSample = null;
+		stationaryNavigationTicks = 0;
+	}
+
+	private boolean shouldTryJumpAssist() {
+		if (movementAssistCooldown > 0 || !onGround() || isInWater() || onClimbable()) {
+			return false;
+		}
+
+		if (!horizontalCollision && !getNavigation().isStuck()) {
+			return false;
+		}
+
+		Vec3 navigationTarget = getNavigationTargetCenter();
+
+		if (navigationTarget == null) {
+			return false;
+		}
+
+		double verticalDelta = navigationTarget.y - getY();
+		double horizontalTargetDistanceSqr = horizontalDistanceSqr(position(), navigationTarget);
+
+		return verticalDelta >= NAVIGATION_JUMP_MIN_TARGET_HEIGHT
+				&& verticalDelta <= NAVIGATION_JUMP_MAX_TARGET_HEIGHT
+				&& horizontalTargetDistanceSqr >= NAVIGATION_JUMP_MIN_TARGET_DISTANCE_SQR
+				&& stationaryNavigationTicks >= 2;
+	}
+
+	private boolean shouldTryClimbAssist() {
+		Vec3 navigationTarget = getNavigationTargetCenter();
+
+		return navigationTarget != null
+				&& onClimbable()
+				&& navigationTarget.y > getY() + 0.4D;
+	}
+
+	private boolean shouldTryWaterAssist() {
+		Vec3 navigationTarget = getNavigationTargetCenter();
+
+		return navigationTarget != null
+				&& isInWater()
+				&& navigationTarget.y > getY() + 0.4D;
+	}
+
+	private void tickMeleeCriticalJumpSupport() {
+		if (meleeCritJumpCooldown > 0) {
+			meleeCritJumpCooldown--;
+		}
+
+		if (meleeCritJumpCooldown > 0 || !canUseSwordCombat() || !onGround() || isInWater() || onClimbable()) {
+			return;
+		}
+
+		LivingEntity target = getTarget();
+
+		if (!isValidCombatTarget(target) || !getSensing().hasLineOfSight(target)) {
+			return;
+		}
+
+		double distanceToTargetSqr = distanceToSqr(target);
+
+		if (distanceToTargetSqr < MELEE_CRIT_JUMP_MIN_DISTANCE_SQR || distanceToTargetSqr > MELEE_CRIT_JUMP_MAX_DISTANCE_SQR) {
+			return;
+		}
+
+		if (horizontalCollision || getNavigation().isStuck()) {
+			return;
+		}
+
+		if (getRandom().nextFloat() > MELEE_CRIT_JUMP_CHANCE) {
+			return;
+		}
+
+		Vec3 directionToTarget = target.position().subtract(position());
+		directionToTarget = new Vec3(directionToTarget.x, 0.0D, directionToTarget.z);
+
+		if (directionToTarget.lengthSqr() < 1.0E-4D) {
+			return;
+		}
+
+		directionToTarget = directionToTarget.normalize();
+		Vec3 currentDeltaMovement = getDeltaMovement();
+		setDeltaMovement(
+				currentDeltaMovement.x + directionToTarget.x * 0.08D,
+				Math.max(currentDeltaMovement.y, 0.42D),
+				currentDeltaMovement.z + directionToTarget.z * 0.08D
+		);
+		getJumpControl().jump();
+		meleeCritJumpCooldown = MELEE_CRIT_JUMP_COOLDOWN_TICKS;
+	}
+
+	private Vec3 getNavigationTargetCenter() {
+		BlockPos navigationTargetPos = getNavigation().getTargetPos();
+		return navigationTargetPos != null ? Vec3.atBottomCenterOf(navigationTargetPos) : null;
+	}
+
+	private double horizontalDistanceSqr(Vec3 first, Vec3 second) {
+		double deltaX = first.x - second.x;
+		double deltaZ = first.z - second.z;
+		return deltaX * deltaX + deltaZ * deltaZ;
 	}
 
 	private void clearCurrentTarget() {
@@ -1631,6 +1902,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		private final double startDistanceSqr;
 		private final double stopDistanceSqr;
 		private int timeToRecalculatePath;
+		private Vec3 roamAnchor;
+		private int roamRecalculateTicks;
 
 		private FollowOwnerGoal(CastleSoldierEntity soldier, double speedModifier, double startDistance, double stopDistance) {
 			this.soldier = soldier;
@@ -1638,6 +1911,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			this.startDistanceSqr = startDistance * startDistance;
 			this.stopDistanceSqr = stopDistance * stopDistance;
 			this.timeToRecalculatePath = 0;
+			this.roamAnchor = null;
+			this.roamRecalculateTicks = 0;
 			setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK));
 		}
 
@@ -1653,7 +1928,10 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				return false;
 			}
 
-			return soldier.distanceToSqr(owner) > startDistanceSqr;
+			double distanceToOwnerSqr = soldier.distanceToSqr(owner);
+			return soldier.shouldRoamAroundStoppedOwner(owner)
+					|| distanceToOwnerSqr > startDistanceSqr
+					|| (!soldier.hasOwnerBeenStillLongEnough() && distanceToOwnerSqr > stopDistanceSqr);
 		}
 
 		@Override
@@ -1668,16 +1946,21 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				return false;
 			}
 
-			return soldier.distanceToSqr(owner) > stopDistanceSqr;
+			double distanceToOwnerSqr = soldier.distanceToSqr(owner);
+			return soldier.shouldRoamAroundStoppedOwner(owner) || distanceToOwnerSqr > stopDistanceSqr;
 		}
 
 		@Override
 		public void start() {
 			timeToRecalculatePath = 0;
+			roamAnchor = null;
+			roamRecalculateTicks = 0;
 		}
 
 		@Override
 		public void stop() {
+			roamAnchor = null;
+			roamRecalculateTicks = 0;
 			soldier.getNavigation().stop();
 		}
 
@@ -1698,6 +1981,14 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 			soldier.getLookControl().setLookAt(owner, 30.0F, 30.0F);
 
+			if (soldier.shouldRoamAroundStoppedOwner(owner)) {
+				tickRoamAroundOwner(owner);
+				return;
+			}
+
+			roamAnchor = null;
+			roamRecalculateTicks = 0;
+
 			if (distanceToOwnerSqr <= stopDistanceSqr) {
 				soldier.getNavigation().stop();
 				return;
@@ -1708,6 +1999,18 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			if (--timeToRecalculatePath <= 0) {
 				timeToRecalculatePath = 10;
 				soldier.getNavigation().moveTo(followAnchor.x, followAnchor.y, followAnchor.z, speedModifier);
+			}
+		}
+
+		private void tickRoamAroundOwner(Player owner) {
+			if (--roamRecalculateTicks <= 0
+					|| roamAnchor == null
+					|| soldier.position().distanceToSqr(roamAnchor) <= 1.0D
+					|| soldier.getNavigation().isDone()
+					|| soldier.getNavigation().isStuck()) {
+				roamRecalculateTicks = FOLLOW_ROAM_RECALCULATE_TICKS;
+				roamAnchor = soldier.getFollowRoamAnchor(owner);
+				soldier.getNavigation().moveTo(roamAnchor.x, roamAnchor.y, roamAnchor.z, speedModifier * 0.85D);
 			}
 		}
 
