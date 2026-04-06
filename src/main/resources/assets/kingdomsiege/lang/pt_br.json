@@ -27,18 +27,15 @@
   "catalyst_type.obsidian": "Obsidiana",
   "catalyst_type.saddle": "Sela",
   "catalyst_type.book": "Livro",
-
   "soldier_defense_profile.unarmored": "Sem Armadura",
   "soldier_defense_profile.light": "Leve",
   "soldier_defense_profile.medium": "Médio",
   "soldier_defense_profile.heavy": "Pesado",
-
   "soldier_rank.recruit": "Recruta",
   "soldier_rank.soldier": "Soldado",
   "soldier_rank.veteran": "Veterano",
   "soldier_rank.sergeant": "Sargento",
   "soldier_rank.champion": "Campeão",
-
   "soldier_title.none": "Sem título",
   "soldier_title.wall_recruit": "Recruta da Muralha",
   "soldier_title.gate_guard": "Guarda do Portão",
@@ -55,7 +52,6 @@
   "soldier_title.garrison_lord": "Lorde da Guarnição",
   "soldier_title.deaths_laughter": "Riso da Morte",
   "soldier_title.last_of_the_wall": "Último da Muralha",
-
   "message.kingdomsiege.soldier_mode_changed": "Modo do soldado: %s",
   "message.kingdomsiege.soldier_rank_up": "⬆ %1$s foi promovido! Nova patente: %2$s",
   "message.kingdomsiege.soldier_xp_debug": "%1$s ganhou %2$s XP militar (total: %3$s)",
@@ -91,6 +87,8 @@
   "text.kingdomsiege.inheritance.power": "Força",
   "text.kingdomsiege.inheritance.punch": "Impacto",
   "text.kingdomsiege.inheritance.flame": "Chama",
-
-  "message.kingdomsiege.follow_limit_reached": "⚠ Limite de seguidores atingido para %1$s (máx: %2$s)"
+  "message.kingdomsiege.follow_limit_reached": "⚠ Limite de seguidores atingido para %1$s (máx: %2$s)",
+  "message.kingdomsiege.soldier_died": "☠ %1$s (%2$s) caiu em batalha. Abates: %3$s | Batalhas sobrevividas: %4$s",
+  "message.kingdomsiege.soldier_status.history": "Histórico: %1$s abates | %2$s batalhas sobrevividas",
+  "message.kingdomsiege.soldier_named": "✏ Soldado nomeado como: %s"
 }

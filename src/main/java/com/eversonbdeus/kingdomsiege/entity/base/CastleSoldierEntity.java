@@ -48,6 +48,7 @@ import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.entity.projectile.arrow.Arrow;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.NameTagItem;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
@@ -171,6 +172,17 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	// Valor maior que o antigo (2.0) evita que o soldado oscile sem registrar chegada.
 	private static final double FOLLOW_ROAM_ARRIVAL_THRESHOLD_SQR = 4.0D;
 
+	// ─── [FASE 6] Regeneração lenta ─────────────────────────────────────────
+
+	// Intervalo entre cada tick de regen: 40 ticks = 2 segundos.
+	private static final int REGEN_INTERVAL_TICKS = 40;
+
+	// Quantidade de vida recuperada por tick de regen.
+	private static final float REGEN_AMOUNT = 0.5F;
+
+	// Porcentagem de vida necessária para bloquear regen (em combate recente).
+	private static final int REGEN_COMBAT_COOLDOWN_TICKS = 100;
+
 	// ─── Constantes de navegação ──────────────────────────────────────────────
 
 	private static final int DEFAULT_GUARD_RADIUS = 8;
@@ -222,6 +234,11 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	// Cooldown para chamada de aliados — evita chamar toda hora.
 	private int allyCallCooldown = 0;
+
+	// [FASE 6] Contadores de regeneração e combate recente.
+	private int regenTickCounter = 0;
+	private int combatCooldownTicks = 0;
+	private boolean battleRegisteredThisCombat = false;
 
 	// ─── Construtor ───────────────────────────────────────────────────────────
 
@@ -469,6 +486,16 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return soldierIdentity.militaryXp();
 	}
 
+	/** [FASE 6] Total de inimigos abatidos ao longo da vida do soldado. */
+	public int getKillCount() {
+		return soldierIdentity.killCount();
+	}
+
+	/** [FASE 6] Número de combates em que o soldado sobreviveu (recebeu dano). */
+	public int getBattlesCount() {
+		return soldierIdentity.battlesCount();
+	}
+
 	// ─── Localização do dono no ServerLevel ──────────────────────────────────
 
 	public Player getOwnerPlayer() {
@@ -547,6 +574,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			validateCurrentTarget();
 			tickAdvancedMovementSupport();
 			tickMeleeCriticalJumpSupport();
+			tickSlowRegeneration();
 		}
 	}
 
@@ -560,9 +588,20 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		boolean damaged = super.hurtServer(level, source, amount);
 
-		// Em GUARD, com vida baixa e vários inimigos, chama aliado próximo.
-		if (damaged && isGuardMode()) {
-			tryCallForAllyHelp(level);
+		if (damaged) {
+			// Reseta cooldown de regen — soldado em combate não regenera.
+			combatCooldownTicks = REGEN_COMBAT_COOLDOWN_TICKS;
+
+			// [FASE 6] Registra o combate na primeira vez que leva dano neste encontro.
+			if (!battleRegisteredThisCombat) {
+				battleRegisteredThisCombat = true;
+				setSoldierIdentity(soldierIdentity.withBattle());
+			}
+
+			// Em GUARD, com vida baixa e vários inimigos, chama aliado próximo.
+			if (isGuardMode()) {
+				tryCallForAllyHelp(level);
+			}
 		}
 
 		return damaged;
@@ -1622,6 +1661,13 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				getMilitaryXp()
 		));
 
+		// [FASE 6] Linha de histórico: kills e batalhas sobrevividas.
+		player.sendSystemMessage(Component.translatable(
+				"message.kingdomsiege.soldier_status.history",
+				getKillCount(),
+				getBattlesCount()
+		));
+
 		for (Component line : getInheritedChestplateEnchantmentsComponents()) {
 			player.sendSystemMessage(line);
 		}
@@ -1631,6 +1677,51 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 
 		player.sendSystemMessage(getTerritoryStatusComponent());
+	}
+
+	// ─── [FASE 6] Morte com peso real ───────────────────────────────────────
+
+	@Override
+	public void die(DamageSource damageSource) {
+		super.die(damageSource);
+
+		if (level() instanceof ServerLevel serverLevel) {
+			Player owner = getValidOwnerPlayer();
+			if (owner != null) {
+				owner.sendSystemMessage(Component.translatable(
+						"message.kingdomsiege.soldier_died",
+						getSoldierDisplayName(),
+						Component.translatable(getSoldierRank().getTranslationKey()),
+						getKillCount(),
+						getBattlesCount()
+				));
+			}
+		}
+	}
+
+	// ─── [FASE 6] Regeneração lenta ───────────────────────────────────────────
+
+	/**
+	 * Regenera lentamente a vida do soldado quando fora de combate.
+	 * Só funciona no servidor, fora do calor da batalha (combatCooldownTicks == 0)
+	 * e enquanto a vida não estiver cheia.
+	 */
+	private void tickSlowRegeneration() {
+		if (combatCooldownTicks > 0) {
+			combatCooldownTicks--;
+			return;
+		}
+
+		if (getHealth() >= getMaxHealth()) {
+			regenTickCounter = 0;
+			return;
+		}
+
+		regenTickCounter++;
+		if (regenTickCounter >= REGEN_INTERVAL_TICKS) {
+			regenTickCounter = 0;
+			heal(REGEN_AMOUNT);
+		}
 	}
 
 	// ─── Serialização ─────────────────────────────────────────────────────────
@@ -1694,7 +1785,24 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			return InteractionResult.SUCCESS;
 		}
 
-		if (player.getItemInHand(hand).isEmpty()) {
+		// [FASE 6] Nomear soldado com Name Tag.
+		ItemStack heldItem = player.getItemInHand(hand);
+		if (heldItem.getItem() instanceof NameTagItem && heldItem.has(net.minecraft.core.component.DataComponents.CUSTOM_NAME)) {
+			if (!level().isClientSide()) {
+				String newName = heldItem.getHoverName().getString();
+				setSoldierIdentity(soldierIdentity.withCustomName(newName));
+				player.sendSystemMessage(Component.translatable(
+						"message.kingdomsiege.soldier_named",
+						getSoldierDisplayName()
+				));
+				if (!player.getAbilities().instabuild) {
+					heldItem.shrink(1);
+				}
+			}
+			return InteractionResult.SUCCESS;
+		}
+
+		if (heldItem.isEmpty()) {
 			if (!level().isClientSide()) {
 				sendBasicStatusTo(player);
 			}
@@ -1721,7 +1829,9 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 
 		SoldierRank rankBefore = getSoldierRank();
-		setSoldierIdentity(soldierIdentity.earnXp(xpGain));
+		// [FASE 6] Registra kill e XP; reseta flag de combate para próximo encontro.
+		setSoldierIdentity(soldierIdentity.earnXp(xpGain).withKill());
+		battleRegisteredThisCombat = false;
 		SoldierRank rankAfter = getSoldierRank();
 
 		if (rankAfter.ordinal() > rankBefore.ordinal()) {

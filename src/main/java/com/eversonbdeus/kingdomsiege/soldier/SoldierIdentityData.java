@@ -8,21 +8,19 @@ import java.util.Optional;
 /**
  * Dados de identidade persistida do soldado.
  *
- * Representa quem o soldado se tornou ao longo da vida: nome, patente, título ativo
- * e experiência militar acumulada. Esta estrutura é separada do
- * {@link SoldierBlueprintData} (o DNA do craft) porque a identidade muda com
- * o tempo, enquanto o blueprint é definido na criação e não muda.
+ * Representa quem o soldado se tornou ao longo da vida: nome, patente, título ativo,
+ * experiência militar acumulada e primeiros registros de histórico de batalha.
  *
- * Esta estrutura será registrada como DataComponent em {@code ModDataComponents}
- * quando o sistema de persistência de identidade for ativado (Fase 6 do roadmap).
- * Por ora, ela serve como contrato de dados estável para referência por outras
- * partes do projeto.
+ * Separado do {@link SoldierBlueprintData} (o DNA do craft) porque a identidade
+ * muda com o tempo, enquanto o blueprint é definido na criação e não muda.
  *
  * Campos:
- *   customName   — nome dado pelo dono. Vazio = usar nome gerado do soldado.
- *   rank         — patente militar atual, avança por XP acumulado.
- *   activeTitle  — título lendário ativo. Apenas um por vez.
- *   militaryXp   — XP militar total, determina o rank via {@link SoldierRank#fromXp}.
+ *   customName    — nome dado pelo dono. Vazio = usar nome padrão da entidade.
+ *   rank          — patente militar atual, avança por XP acumulado.
+ *   activeTitle   — título lendário ativo. Apenas um por vez.
+ *   militaryXp    — XP militar total, determina o rank via {@link SoldierRank#fromXp}.
+ *   killCount     — [FASE 6] total de inimigos abatidos ao longo da vida.
+ *   battlesCount  — [FASE 6] número de combates sobrevividos (incrementado ao receber dano em combate).
  *
  * Referência: docs 13, 17, 18 do projeto Kingdom Siege.
  */
@@ -30,7 +28,9 @@ public record SoldierIdentityData(
         Optional<String> customName,
         SoldierRank rank,
         SoldierTitleId activeTitle,
-        int militaryXp
+        int militaryXp,
+        int killCount,
+        int battlesCount
 ) {
 
     public static final Codec<SoldierIdentityData> CODEC = RecordCodecBuilder.create(instance ->
@@ -42,7 +42,11 @@ public record SoldierIdentityData(
                     SoldierTitleId.CODEC.optionalFieldOf("active_title", SoldierTitleId.NONE)
                             .forGetter(SoldierIdentityData::activeTitle),
                     Codec.INT.optionalFieldOf("military_xp", 0)
-                            .forGetter(SoldierIdentityData::militaryXp)
+                            .forGetter(SoldierIdentityData::militaryXp),
+                    Codec.INT.optionalFieldOf("kill_count", 0)
+                            .forGetter(SoldierIdentityData::killCount),
+                    Codec.INT.optionalFieldOf("battles_count", 0)
+                            .forGetter(SoldierIdentityData::battlesCount)
             ).apply(instance, SoldierIdentityData::new)
     );
 
@@ -56,9 +60,10 @@ public record SoldierIdentityData(
         rank = rank != null ? rank : SoldierRank.RECRUIT;
         activeTitle = activeTitle != null ? activeTitle : SoldierTitleId.NONE;
         militaryXp = Math.max(0, militaryXp);
+        killCount = Math.max(0, killCount);
+        battlesCount = Math.max(0, battlesCount);
 
-        // Garante consistência: se o XP acumulado corresponde a um rank mais alto,
-        // o rank armazenado não pode ficar abaixo do que o XP já desbloqueou.
+        // Garante consistência: o rank armazenado nunca fica abaixo do que o XP já desbloqueou.
         SoldierRank rankFromXp = SoldierRank.fromXp(militaryXp);
         if (rankFromXp.ordinal() > rank.ordinal()) {
             rank = rankFromXp;
@@ -69,13 +74,15 @@ public record SoldierIdentityData(
 
     /**
      * Estado inicial padrão para toda nova unidade ao spawnar.
-     * Sem nome customizado, rank RECRUIT, sem título, 0 XP.
+     * Sem nome customizado, rank RECRUIT, sem título, 0 XP, 0 kills, 0 batalhas.
      */
     public static SoldierIdentityData freshRecruit() {
         return new SoldierIdentityData(
                 Optional.empty(),
                 SoldierRank.RECRUIT,
                 SoldierTitleId.NONE,
+                0,
+                0,
                 0
         );
     }
@@ -97,14 +104,17 @@ public record SoldierIdentityData(
         Optional<String> resolved = (name != null && !name.isBlank())
                 ? Optional.of(name.strip())
                 : Optional.empty();
-        return new SoldierIdentityData(resolved, rank, activeTitle, militaryXp);
+        return new SoldierIdentityData(resolved, rank, activeTitle, militaryXp, killCount, battlesCount);
     }
 
     /**
      * Retorna nova identidade com o título ativo trocado.
      */
     public SoldierIdentityData withActiveTitle(SoldierTitleId title) {
-        return new SoldierIdentityData(customName, rank, title != null ? title : SoldierTitleId.NONE, militaryXp);
+        return new SoldierIdentityData(
+                customName, rank, title != null ? title : SoldierTitleId.NONE,
+                militaryXp, killCount, battlesCount
+        );
     }
 
     /**
@@ -117,29 +127,39 @@ public record SoldierIdentityData(
         }
         int newXp = militaryXp + xpGain;
         SoldierRank newRank = SoldierRank.fromXp(newXp);
-        return new SoldierIdentityData(customName, newRank, activeTitle, newXp);
+        return new SoldierIdentityData(customName, newRank, activeTitle, newXp, killCount, battlesCount);
+    }
+
+    /**
+     * [FASE 6] Retorna nova identidade com o contador de kills incrementado em 1.
+     */
+    public SoldierIdentityData withKill() {
+        return new SoldierIdentityData(customName, rank, activeTitle, militaryXp, killCount + 1, battlesCount);
+    }
+
+    /**
+     * [FASE 6] Retorna nova identidade com o contador de batalhas incrementado em 1.
+     * Uma batalha é registrada na primeira vez que o soldado recebe dano em um combate.
+     */
+    public SoldierIdentityData withBattle() {
+        return new SoldierIdentityData(customName, rank, activeTitle, militaryXp, killCount, battlesCount + 1);
     }
 
     // ─── Helpers de leitura ───────────────────────────────────────────────────
 
     /**
      * Retorna o nome customizado, ou uma string vazia se não houver.
-     * Útil para evitar Optional.get() espalhado no código da entidade.
      */
     public String getCustomNameOrEmpty() {
         return customName.orElse("");
     }
 
-    /**
-     * Retorna true se o soldado tem um nome customizado definido pelo dono.
-     */
+    /** Retorna true se o soldado tem um nome customizado definido pelo dono. */
     public boolean hasCustomName() {
         return customName.isPresent();
     }
 
-    /**
-     * Retorna true se o soldado tem um título ativo (diferente de NONE).
-     */
+    /** Retorna true se o soldado tem um título ativo (diferente de NONE). */
     public boolean hasActiveTitle() {
         return !activeTitle.isNone();
     }
