@@ -50,6 +50,9 @@ public record SoldierIdentityData(
      * Compact constructor com sanitização básica dos campos.
      */
     public SoldierIdentityData {
+        customName = customName != null
+                ? customName.filter(name -> !name.isBlank()).map(String::strip)
+                : Optional.empty();
         rank = rank != null ? rank : SoldierRank.RECRUIT;
         activeTitle = activeTitle != null ? activeTitle : SoldierTitleId.NONE;
         militaryXp = Math.max(0, militaryXp);
@@ -75,6 +78,13 @@ public record SoldierIdentityData(
                 SoldierTitleId.NONE,
                 0
         );
+    }
+
+    /**
+     * Alias mantido por compatibilidade com chamadas já existentes no código.
+     */
+    public static SoldierIdentityData defaultRecruit() {
+        return freshRecruit();
     }
 
     // ─── Mutações imutáveis (retornam nova instância) ─────────────────────────
