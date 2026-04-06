@@ -130,6 +130,17 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final int ARCHER_ATTACK_INTERVAL_TICKS = 30;
 	private static final float ARCHER_PROJECTILE_VELOCITY = 1.6F;
 
+	// ─── [COMBATE] Progressão por rank ─────────────────────────────────────
+	// Inaccuracy da flecha por rank (Skeleton-Hard usa ~2.0; RECRUIT é pior que skele-normal)
+	// shoot(dx, dy, dz, velocity, inaccuracy) — maior inaccuracy = mais erro
+	private static final float[] RANK_ARCHER_INACCURACY  = { 7.0F, 5.5F, 3.5F, 2.0F, 0.8F };
+	// Ticks entre disparos por rank (30 ticks = 1.5s; 14 ticks = 0.7s)
+	private static final int[]   RANK_ARCHER_INTERVAL    = { 30, 26, 22, 18, 14 };
+	// Velocidade da flecha por rank (1.6 = base; 2.4 = elite)
+	private static final float[] RANK_ARCHER_VELOCITY    = { 1.6F, 1.75F, 1.95F, 2.15F, 2.4F };
+	// Multiplicador de velocidade de perseguição do espadachim por rank
+	private static final double[] RANK_SWORD_CHASE_SPEED = { 1.0D, 1.08D, 1.16D, 1.24D, 1.32D };
+
 	// ─── Constantes de proteção ao dono ──────────────────────────────────────
 
 	private static final double OWNER_PROTECT_RANGE = 16.0D;
@@ -494,6 +505,32 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	/** [FASE 6] Número de combates em que o soldado sobreviveu (recebeu dano). */
 	public int getBattlesCount() {
 		return soldierIdentity.battlesCount();
+	}
+
+	// ─── [COMBATE] Parâmetros de combate escalados por rank ─────────────────
+
+	/** Inaccuracy da flecha — menor a cada rank (RECRUIT=7.0 → CHAMPION=0.8). */
+	public float getRankArcherInaccuracy() {
+		int ordinal = Math.min(getSoldierRank().ordinal(), RANK_ARCHER_INACCURACY.length - 1);
+		return RANK_ARCHER_INACCURACY[ordinal];
+	}
+
+	/** Intervalo mínimo entre disparos em ticks — diminui a cada rank. */
+	public int getRankArcherIntervalTicks() {
+		int ordinal = Math.min(getSoldierRank().ordinal(), RANK_ARCHER_INTERVAL.length - 1);
+		return RANK_ARCHER_INTERVAL[ordinal];
+	}
+
+	/** Velocidade da flecha — aumenta a cada rank. */
+	public float getRankArcherVelocity() {
+		int ordinal = Math.min(getSoldierRank().ordinal(), RANK_ARCHER_VELOCITY.length - 1);
+		return RANK_ARCHER_VELOCITY[ordinal];
+	}
+
+	/** Multiplicador de velocidade de perseguição do espadachim — aumenta a cada rank. */
+	public double getRankSwordChaseSpeed() {
+		int ordinal = Math.min(getSoldierRank().ordinal(), RANK_SWORD_CHASE_SPEED.length - 1);
+		return RANK_SWORD_CHASE_SPEED[ordinal];
 	}
 
 	// ─── Localização do dono no ServerLevel ──────────────────────────────────
@@ -1889,7 +1926,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		double horizontalDistance = Math.sqrt(deltaX * deltaX + deltaZ * deltaZ);
 
 		arrow.setBaseDamage(getEffectiveProjectileBaseDamage());
-		arrow.shoot(deltaX, deltaY + horizontalDistance * 0.2D, deltaZ, velocity, 8.0F);
+		// [COMBATE] Inaccuracy e velocidade escalam com o rank do soldado.
+		arrow.shoot(deltaX, deltaY + horizontalDistance * 0.2D, deltaZ, getRankArcherVelocity(), getRankArcherInaccuracy());
 		applyInheritedProjectileEnchantments(arrow);
 
 		playSound(SoundEvents.SKELETON_SHOOT, 1.0F, 1.0F / (getRandom().nextFloat() * 0.4F + 0.8F));
@@ -2033,6 +2071,12 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final class SwordsmanMeleeAttackGoal extends MeleeAttackGoal {
 		private final CastleSoldierEntity soldier;
 
+		// [COMBATE] Contador de ticks em que o alvo está colado sem receber golpe.
+		// Aranha, creeper e mobs rasteiros podem ficar presos no hitbox do soldado,
+		// fazendo o MeleeAttackGoal parar de atacar. Após 20 ticks sem golpe com
+		// o alvo a ≤ 2 blocos, um ataque forçado é executado diretamente.
+		private int stuckAttackTicks = 0;
+
 		private SwordsmanMeleeAttackGoal(CastleSoldierEntity soldier, double speedModifier, boolean followingTargetEvenIfNotSeen) {
 			super(soldier, speedModifier, followingTargetEvenIfNotSeen);
 			this.soldier = soldier;
@@ -2046,6 +2090,50 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		@Override
 		public boolean canContinueToUse() {
 			return soldier.canUseSwordCombat() && super.canContinueToUse();
+		}
+
+		@Override
+		public void start() {
+			super.start();
+			stuckAttackTicks = 0;
+		}
+
+		@Override
+		public void stop() {
+			super.stop();
+			stuckAttackTicks = 0;
+		}
+
+		@Override
+		public void tick() {
+			super.tick();
+
+			LivingEntity target = soldier.getTarget();
+			if (target == null || !target.isAlive()) {
+				stuckAttackTicks = 0;
+				return;
+			}
+
+			// [COMBATE] Perseguição mais rápida conforme o rank sobe.
+			double rankSpeed = SWORDSMAN_MELEE_SPEED * soldier.getRankSwordChaseSpeed();
+			soldier.getNavigation().moveTo(target, rankSpeed);
+
+			double distSqr = soldier.distanceToSqr(target);
+
+			// [COMBATE BUG-FIX] Alvo colado ao soldado (≤ 2 blocos):
+			// conta ticks sem golpe e força o ataque após 20 ticks (1 segundo).
+			// Cobre o caso da aranha rastejando sob o hitbox e outros mobs presos.
+			if (distSqr < 4.0D) {
+				stuckAttackTicks++;
+				if (stuckAttackTicks >= 20 && !soldier.level().isClientSide()) {
+					if (soldier.level() instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+						soldier.doHurtTarget(serverLevel, target);
+					}
+					stuckAttackTicks = 0;
+				}
+			} else {
+				stuckAttackTicks = 0;
+			}
 		}
 	}
 
@@ -2177,8 +2265,9 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			}
 
 			if (hasLineOfSight && distanceToTargetSqr <= attackRangeSqr && attackCooldown <= 0) {
-				soldier.performRangedAttack(target, ARCHER_PROJECTILE_VELOCITY);
-				attackCooldown = ARCHER_ATTACK_INTERVAL_TICKS;
+				// [COMBATE] velocity e intervalo escalam com o rank do soldado.
+				soldier.performRangedAttack(target, soldier.getRankArcherVelocity());
+				attackCooldown = soldier.getRankArcherIntervalTicks();
 			}
 		}
 	}
