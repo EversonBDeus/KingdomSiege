@@ -59,7 +59,9 @@
   "message.kingdomsiege.soldier_mode_changed": "Soldier mode: %s",
   "message.kingdomsiege.soldier_status.header": "Status of %1$s | Class: %2$s | Mode: %3$s",
   "message.kingdomsiege.soldier_status.combat": "Base weapon: %1$s | Internal chestplate: %2$s | Catalyst: %3$s",
+
   "message.kingdomsiege.soldier_status.attributes": "Health: %1$s/%2$s | Armor: %3$s | Toughness: %4$s",
+  "message.kingdomsiege.soldier_status.rank": "Rank: %1$s | XP: %2$s",
   "item.kingdomsiege.soldier_core": "Soldier Core",
   "tooltip.kingdomsiege.soldier_egg.class": "Class: %s",
   "tooltip.kingdomsiege.soldier_egg.weapon": "Base weapon: %s",

@@ -60,6 +60,7 @@
   "message.kingdomsiege.soldier_status.header": "Status de %1$s | Classe: %2$s | Modo: %3$s",
   "message.kingdomsiege.soldier_status.combat": "Arma base: %1$s | Peitoral interno: %2$s | Catalisador: %3$s",
   "message.kingdomsiege.soldier_status.attributes": "Vida: %1$s/%2$s | Armadura: %3$s | Toughness: %4$s",
+  "message.kingdomsiege.soldier_status.rank": "Patente: %1$s | XP: %2$s",
   "item.kingdomsiege.soldier_core": "Núcleo do Soldado",
   "tooltip.kingdomsiege.soldier_egg.class": "Classe: %s",
   "tooltip.kingdomsiege.soldier_egg.weapon": "Arma base: %s",
