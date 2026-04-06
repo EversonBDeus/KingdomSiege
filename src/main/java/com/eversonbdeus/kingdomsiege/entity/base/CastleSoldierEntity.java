@@ -63,6 +63,9 @@ import java.util.List;
 import java.util.UUID;
 
 public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMob {
+
+	// ─── Atributos base ───────────────────────────────────────────────────────
+
 	private static final double BASE_MOVEMENT_SPEED = 0.28D;
 	private static final double BASE_ATTACK_DAMAGE = 4.0D;
 	private static final double BASE_FOLLOW_RANGE = 16.0D;
@@ -70,6 +73,9 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final double BASE_ARMOR = 0.0D;
 	private static final double BASE_ARMOR_TOUGHNESS = 0.0D;
 	private static final double BASE_KNOCKBACK_RESISTANCE = 0.0D;
+
+	// ─── Constantes de herança de encantamentos ────────────────────────────────
+
 	private static final double INHERITED_PROTECTION_REDUCTION_PER_LEVEL = 0.04D;
 	private static final double INHERITED_SPECIAL_PROTECTION_REDUCTION_PER_LEVEL = 0.08D;
 	private static final float THORNS_CHANCE_PER_LEVEL = 0.15F;
@@ -81,25 +87,30 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final double INHERITED_POWER_DAMAGE_PER_LEVEL = 0.5D;
 	private static final double INHERITED_POWER_BASE_BONUS = 0.5D;
 
+	// ─── Constantes de combate ────────────────────────────────────────────────
+
 	private static final double SWORDSMAN_MELEE_SPEED = 1.15D;
+
+	// ─── Constantes de GUARD ──────────────────────────────────────────────────
+
 	private static final double GUARD_MOVE_SPEED = 1.0D;
 	private static final double GUARD_RETURN_BUFFER = 1.5D;
 
-	// [MUDANÇA] Aumentado de 6.0 para 12.0 — o mob pode fugir mais longe antes
-	// do soldado abandonar o combate. Total: guardRadius + 12 blocos de perseguição.
+	// O soldado persegue até guardRadius + 12 blocos antes de abandonar o alvo.
 	private static final double GUARD_CHASE_LEASH = 12.0D;
 
 	private static final double GUARD_HOME_HOLD_DISTANCE = 1.75D;
 	private static final int GUARD_HOME_HOLD_MIN_TICKS = 30;
 	private static final int GUARD_HOME_HOLD_MAX_TICKS = 70;
 
-	// [NOVO] Sistema de chamada de aliados — ativa quando há vários inimigos
-	// e o soldado está com pouca vida no modo GUARD.
+	// Sistema de chamada de aliados: ativa quando há vários inimigos e vida baixa.
 	private static final double GUARD_ALLY_CALL_RANGE = 20.0D;
 	private static final double GUARD_ALLY_CALL_RANGE_SQR = GUARD_ALLY_CALL_RANGE * GUARD_ALLY_CALL_RANGE;
 	private static final int GUARD_ALLY_CALL_COOLDOWN_TICKS = 120;
 	private static final double GUARD_ALLY_CALL_HEALTH_THRESHOLD = 0.5D; // abaixo de 50% de vida
-	private static final int GUARD_ALLY_CALL_MIN_ENEMIES = 2;             // 2+ inimigos para acionar
+	private static final int GUARD_ALLY_CALL_MIN_ENEMIES = 2;            // 2+ inimigos para acionar
+
+	// ─── Constantes do arqueiro ───────────────────────────────────────────────
 
 	private static final double ARCHER_MOVE_SPEED = 1.0D;
 	private static final double ARCHER_ATTACK_RANGE = 12.0D;
@@ -110,8 +121,12 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final int ARCHER_ATTACK_INTERVAL_TICKS = 30;
 	private static final float ARCHER_PROJECTILE_VELOCITY = 1.6F;
 
+	// ─── Constantes de proteção ao dono ──────────────────────────────────────
+
 	private static final double OWNER_PROTECT_RANGE = 16.0D;
 	private static final double OWNER_PROTECT_RANGE_SQR = OWNER_PROTECT_RANGE * OWNER_PROTECT_RANGE;
+
+	// ─── Constantes de FOLLOW ─────────────────────────────────────────────────
 
 	private static final double FOLLOW_START_DISTANCE = 6.0D;
 	private static final double FOLLOW_STOP_DISTANCE = 3.5D;
@@ -120,33 +135,41 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final double FOLLOW_REJOIN_DISTANCE = 24.0D;
 	private static final double FOLLOW_REJOIN_DISTANCE_SQR = FOLLOW_REJOIN_DISTANCE * FOLLOW_REJOIN_DISTANCE;
 
-	// [MUDANÇA] Aumentado de 50 para 80 — espera mais antes de começar a vagar.
+	// Espera 4 segundos parado antes de começar a vagar.
 	private static final int FOLLOW_OWNER_STATIONARY_TICKS = 80;
 
 	private static final double FOLLOW_OWNER_MOVEMENT_TOLERANCE = 0.04D;
-	private static final double FOLLOW_OWNER_MOVEMENT_TOLERANCE_SQR = FOLLOW_OWNER_MOVEMENT_TOLERANCE * FOLLOW_OWNER_MOVEMENT_TOLERANCE;
+	private static final double FOLLOW_OWNER_MOVEMENT_TOLERANCE_SQR =
+			FOLLOW_OWNER_MOVEMENT_TOLERANCE * FOLLOW_OWNER_MOVEMENT_TOLERANCE;
 
-	// [MUDANÇA] Aumentado de 8.0 para 12.0 — pode vagar um pouco mais longe do dono.
+	// Raio máximo de vagar em torno do dono parado.
 	private static final double FOLLOW_ROAM_MAX_DISTANCE = 12.0D;
 	private static final double FOLLOW_ROAM_MAX_DISTANCE_SQR = FOLLOW_ROAM_MAX_DISTANCE * FOLLOW_ROAM_MAX_DISTANCE;
 
-	// [MUDANÇA] Mínimo de 3.5 (antes 1.75) — nunca entra no espaço do player.
+	// [FASE 4] Mínimo 3.5 blocos — nunca entra no espaço do player.
 	private static final double FOLLOW_ROAM_MIN_RADIUS = 3.5D;
 
-	// [MUDANÇA] Máximo de 5.5 (antes 3.25) — mantém distância respeitosa.
+	// [FASE 4] Máximo 5.5 blocos — mantém distância respeitosa.
 	private static final double FOLLOW_ROAM_MAX_RADIUS = 5.5D;
 
-	// [MUDANÇA] Aumentado de 25 para 80 — recalcula destino bem menos, parece mais natural.
+	// Recalcula destino de vagar a cada 80 ticks (4 s) no máximo.
 	private static final int FOLLOW_ROAM_RECALCULATE_TICKS = 80;
 
-	// [NOVO] Tempo de repouso após chegar ao destino de vagar (em ticks).
+	// [FASE 4] Repouso de 3–6 s após chegar ao ponto de vagar, antes de escolher o próximo.
 	private static final int FOLLOW_ROAM_REST_MIN_TICKS = 60;
 	private static final int FOLLOW_ROAM_REST_MAX_TICKS = 120;
+
+	// [FASE 4] Threshold de "chegou ao ponto de vagar": 4 blocos² (= 2 blocos).
+	// Valor maior que o antigo (2.0) evita que o soldado oscile sem registrar chegada.
+	private static final double FOLLOW_ROAM_ARRIVAL_THRESHOLD_SQR = 4.0D;
+
+	// ─── Constantes de navegação ──────────────────────────────────────────────
 
 	private static final int DEFAULT_GUARD_RADIUS = 8;
 
 	private static final double NAVIGATION_PROGRESS_TOLERANCE = 0.04D;
-	private static final double NAVIGATION_PROGRESS_TOLERANCE_SQR = NAVIGATION_PROGRESS_TOLERANCE * NAVIGATION_PROGRESS_TOLERANCE;
+	private static final double NAVIGATION_PROGRESS_TOLERANCE_SQR =
+			NAVIGATION_PROGRESS_TOLERANCE * NAVIGATION_PROGRESS_TOLERANCE;
 	private static final int NAVIGATION_REPATH_TICKS = 15;
 	private static final int NAVIGATION_STUCK_TICKS = 22;
 	private static final int NAVIGATION_ASSIST_COOLDOWN_TICKS = 18;
@@ -155,13 +178,21 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final double NAVIGATION_JUMP_MIN_TARGET_HEIGHT = 0.25D;
 	private static final double NAVIGATION_JUMP_MAX_TARGET_HEIGHT = 1.25D;
 	private static final double NAVIGATION_JUMP_MIN_TARGET_DISTANCE = 0.75D;
-	private static final double NAVIGATION_JUMP_MIN_TARGET_DISTANCE_SQR = NAVIGATION_JUMP_MIN_TARGET_DISTANCE * NAVIGATION_JUMP_MIN_TARGET_DISTANCE;
+	private static final double NAVIGATION_JUMP_MIN_TARGET_DISTANCE_SQR =
+			NAVIGATION_JUMP_MIN_TARGET_DISTANCE * NAVIGATION_JUMP_MIN_TARGET_DISTANCE;
+
+	// ─── Constantes de salto crítico (espadachim) ────────────────────────────
+
 	private static final int MELEE_CRIT_JUMP_COOLDOWN_TICKS = 24;
 	private static final float MELEE_CRIT_JUMP_CHANCE = 0.16F;
 	private static final double MELEE_CRIT_JUMP_MIN_DISTANCE = 1.75D;
 	private static final double MELEE_CRIT_JUMP_MAX_DISTANCE = 3.25D;
-	private static final double MELEE_CRIT_JUMP_MIN_DISTANCE_SQR = MELEE_CRIT_JUMP_MIN_DISTANCE * MELEE_CRIT_JUMP_MIN_DISTANCE;
-	private static final double MELEE_CRIT_JUMP_MAX_DISTANCE_SQR = MELEE_CRIT_JUMP_MAX_DISTANCE * MELEE_CRIT_JUMP_MAX_DISTANCE;
+	private static final double MELEE_CRIT_JUMP_MIN_DISTANCE_SQR =
+			MELEE_CRIT_JUMP_MIN_DISTANCE * MELEE_CRIT_JUMP_MIN_DISTANCE;
+	private static final double MELEE_CRIT_JUMP_MAX_DISTANCE_SQR =
+			MELEE_CRIT_JUMP_MAX_DISTANCE * MELEE_CRIT_JUMP_MAX_DISTANCE;
+
+	// ─── Estado persistido ────────────────────────────────────────────────────
 
 	private SoldierBlueprintData soldierBlueprint = SoldierBlueprintData.defaultRecruit();
 	private SoldierMode soldierMode = SoldierMode.GUARD;
@@ -169,8 +200,11 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private BlockPos homePos;
 	private int guardRadius = DEFAULT_GUARD_RADIUS;
 
-	// [FASE 6] Identidade persistida: nome custom, rank, XP militar.
+	// [FASE 6] Identidade persistida — usada agora para rank e XP.
 	private SoldierIdentityData soldierIdentity = SoldierIdentityData.defaultRecruit();
+
+	// ─── Estado interno de navegação/follow ───────────────────────────────────
+
 	private Vec3 lastOwnerFollowSample;
 	private int ownerStillTicks;
 	private Vec3 lastNavigationProgressSample;
@@ -178,8 +212,10 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private int movementAssistCooldown;
 	private int meleeCritJumpCooldown;
 
-	// [NOVO] Cooldown para chamada de aliados — evita chamar toda hora.
+	// Cooldown para chamada de aliados — evita chamar toda hora.
 	private int allyCallCooldown = 0;
+
+	// ─── Construtor ───────────────────────────────────────────────────────────
 
 	public CastleSoldierEntity(Level level) {
 		this(ModEntities.CASTLE_SOLDIER, level);
@@ -192,6 +228,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		refreshDerivedAttributes();
 	}
 
+	// ─── Atributos estáticos ─────────────────────────────────────────────────
+
 	public static AttributeSupplier.Builder createAttributes() {
 		return PathfinderMob.createMobAttributes()
 				.add(Attributes.MAX_HEALTH, BASE_MAX_HEALTH)
@@ -202,6 +240,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				.add(Attributes.ARMOR_TOUGHNESS, BASE_ARMOR_TOUGHNESS)
 				.add(Attributes.KNOCKBACK_RESISTANCE, BASE_KNOCKBACK_RESISTANCE);
 	}
+
+	// ─── Navegação ────────────────────────────────────────────────────────────
 
 	@Override
 	protected PathNavigation createNavigation(Level level) {
@@ -218,6 +258,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		setPathfindingMalus(PathType.WATER, 0.0F);
 		setPathfindingMalus(PathType.WATER_BORDER, 0.0F);
 	}
+
+	// ─── Blueprint ───────────────────────────────────────────────────────────
 
 	public SoldierBlueprintData getSoldierBlueprint() {
 		return soldierBlueprint;
@@ -236,6 +278,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		setSoldierMode(SoldierMode.GUARD);
 	}
 
+	// ─── HomePos ─────────────────────────────────────────────────────────────
+
 	public BlockPos getHomePos() {
 		return homePos;
 	}
@@ -252,6 +296,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		homePos = null;
 	}
 
+	// ─── Raio de guarda ──────────────────────────────────────────────────────
+
 	public int getGuardRadius() {
 		return guardRadius;
 	}
@@ -259,6 +305,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	public void setGuardRadius(int guardRadius) {
 		this.guardRadius = Math.max(1, guardRadius);
 	}
+
+	// ─── Classe e equipamento ────────────────────────────────────────────────
 
 	public SoldierClass getSoldierClass() {
 		return soldierBlueprint.soldierClass();
@@ -301,10 +349,19 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return soldierBlueprint.catalystType();
 	}
 
+	// ─── Modo de comando ─────────────────────────────────────────────────────
+
 	public SoldierMode getSoldierMode() {
 		return soldierMode;
 	}
 
+	/**
+	 * Define o modo de comando do soldado.
+	 *
+	 * [FASE 4] Ao mudar para GUARD sem homePos definido, usa a posição atual
+	 * como posto de guarda. Isso evita que o soldado fique parado sem território
+	 * ao ser liberado do modo FOLLOW.
+	 */
 	public void setSoldierMode(SoldierMode soldierMode) {
 		SoldierMode resolvedMode = soldierMode != null ? soldierMode : SoldierMode.GUARD;
 
@@ -312,13 +369,17 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			if (resolvedMode == SoldierMode.GUARD) {
 				getNavigation().stop();
 			}
-
 			return;
 		}
 
 		this.soldierMode = resolvedMode;
 		clearCurrentTarget();
 		getNavigation().stop();
+
+		// [FASE 4] Ao entrar em GUARD sem homePos, define o posto atual na posição corrente.
+		if (resolvedMode == SoldierMode.GUARD && homePos == null) {
+			setHomePos(blockPosition());
+		}
 	}
 
 	public void toggleSoldierMode() {
@@ -340,6 +401,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	public boolean isFollowMode() {
 		return soldierMode == SoldierMode.FOLLOW;
 	}
+
+	// ─── Dono ────────────────────────────────────────────────────────────────
 
 	public UUID getOwnerUuid() {
 		return ownerUuid;
@@ -370,8 +433,11 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return soldierIdentity;
 	}
 
+	/**
+	 * [FASE 4] Bug corrigido: a atribuição estava triplicada no código anterior.
+	 */
 	public void setSoldierIdentity(SoldierIdentityData identity) {
-		this.soldierIdentity = identity != null ? identity : SoldierIdentityData.defaultRecruit();this.soldierIdentity = identity != null ? identity : SoldierIdentityData.defaultRecruit();this.soldierIdentity = identity != null ? identity : SoldierIdentityData.defaultRecruit();
+		this.soldierIdentity = identity != null ? identity : SoldierIdentityData.defaultRecruit();
 	}
 
 	/** Retorna o nome de exibição: nome custom se definido, senão o nome padrão da entidade. */
@@ -389,7 +455,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return soldierIdentity.militaryXp();
 	}
 
-	// ─────────────────────────────────────────────────────────────────────────
+	// ─── Localização do dono no ServerLevel ──────────────────────────────────
 
 	public Player getOwnerPlayer() {
 		if (ownerUuid == null) {
@@ -409,6 +475,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return null;
 	}
 
+	// ─── Lógica de aquisição automática de alvo ───────────────────────────────
+
 	public boolean canAutoAcquireHostileTarget() {
 		if (isGuardMode()) {
 			return true;
@@ -421,6 +489,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		Player owner = getValidOwnerPlayer();
 		return owner != null && distanceToSqr(owner) <= OWNER_PROTECT_RANGE_SQR;
 	}
+
+	// ─── Goals ───────────────────────────────────────────────────────────────
 
 	@Override
 	protected void registerGoals() {
@@ -440,17 +510,20 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		targetSelector.addGoal(2, new ArcherNearestHostileTargetGoal(this));
 	}
 
+	// ─── Remoção por distância ────────────────────────────────────────────────
+
 	@Override
 	public boolean removeWhenFarAway(double distanceToClosestPlayer) {
 		return false;
 	}
+
+	// ─── Tick principal ───────────────────────────────────────────────────────
 
 	@Override
 	public void tick() {
 		super.tick();
 
 		if (!level().isClientSide()) {
-			// [NOVO] Decrementa cooldown de chamada de aliados.
 			if (allyCallCooldown > 0) {
 				allyCallCooldown--;
 			}
@@ -463,6 +536,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 	}
 
+	// ─── Dano recebido ────────────────────────────────────────────────────────
+
 	@Override
 	public boolean hurtServer(ServerLevel level, DamageSource source, float amount) {
 		if (isBlockedDamageFromOwner(source)) {
@@ -471,7 +546,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		boolean damaged = super.hurtServer(level, source, amount);
 
-		// [NOVO] Quando em GUARD, vida baixa e vários inimigos: chama aliado próximo.
+		// Em GUARD, com vida baixa e vários inimigos, chama aliado próximo.
 		if (damaged && isGuardMode()) {
 			tryCallForAllyHelp(level);
 		}
@@ -479,19 +554,16 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return damaged;
 	}
 
-	// [NOVO] Verifica condições para chamar aliados e aciona se necessário.
-	// Condições: modo GUARD + vida ≤ 50% + 2 ou mais inimigos próximos + cooldown livre.
+	/** Verifica condições para chamar aliados e aciona se necessário. */
 	private void tryCallForAllyHelp(ServerLevel level) {
 		if (allyCallCooldown > 0) {
 			return;
 		}
 
-		// Só aciona com vida baixa — com vida cheia, aguenta sozinho.
 		if (getHealth() / getMaxHealth() > GUARD_ALLY_CALL_HEALTH_THRESHOLD) {
 			return;
 		}
 
-		// Conta quantos inimigos válidos estão próximos.
 		double scanRadius = guardRadius + 4.0D;
 		List<Mob> nearbyHostiles = level.getEntitiesOfClass(
 				Mob.class,
@@ -507,8 +579,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		allyCallCooldown = GUARD_ALLY_CALL_COOLDOWN_TICKS;
 	}
 
-	// [NOVO] Encontra o aliado ocioso mais próximo e manda ele ajudar.
-	// Chama apenas UM aliado por vez para não puxar todo o grupo.
+	/** Encontra o aliado ocioso mais próximo e manda ele ajudar. */
 	private void callNearestIdleAlly(ServerLevel level) {
 		LivingEntity currentTarget = getTarget();
 		if (currentTarget == null) {
@@ -518,7 +589,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		List<CastleSoldierEntity> candidates = level.getEntitiesOfClass(
 				CastleSoldierEntity.class,
 				getBoundingBox().inflate(GUARD_ALLY_CALL_RANGE),
-				// Só aliados ociosos — não perturba quem já está combatendo.
 				e -> e != this && hasSameOwner(e) && e.getTarget() == null
 		);
 
@@ -526,7 +596,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			return;
 		}
 
-		// Escolhe o aliado mais próximo.
 		CastleSoldierEntity closest = null;
 		double closestDistSqr = GUARD_ALLY_CALL_RANGE_SQR;
 
@@ -552,6 +621,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				&& this.ownerUuid != null
 				&& this.ownerUuid.equals(entity.getUUID());
 	}
+
+	// ─── Dano causado ────────────────────────────────────────────────────────
 
 	@Override
 	public boolean doHurtTarget(ServerLevel serverLevel, Entity target) {
@@ -612,6 +683,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				-Math.cos(yawRadians)
 		);
 	}
+
+	// ─── Dano recebido: defesa e espinhos ────────────────────────────────────
 
 	private boolean isFriendlyDamageSource(DamageSource damageSource) {
 		if (damageSource == null) {
@@ -714,6 +787,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return false;
 	}
 
+	// ─── Validação de estado ──────────────────────────────────────────────────
+
 	private void validateOwnerState() {
 		if (!isFollowMode()) {
 			return;
@@ -743,8 +818,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	private boolean shouldDisengageFromTarget(LivingEntity target) {
 		if (isGuardMode()) {
-			// [MUDANÇA] Usa limite ampliado (GUARD_CHASE_LEASH = 12).
-			// O soldado persegue até guardRadius + 12 blocos antes de abandonar.
 			return isOutsideGuardChaseLimit(target);
 		}
 
@@ -798,6 +871,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return Vec3.atBottomCenterOf(homePos);
 	}
 
+	// ─── Posicionamento de combate ────────────────────────────────────────────
+
 	private Vec3 clampToGuardArea(Vec3 desiredPosition) {
 		if (!isGuardMode() || !hasHomePos()) {
 			return desiredPosition;
@@ -839,6 +914,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return clampToGuardArea(desiredPosition);
 	}
 
+	// ─── Posicionamento de FOLLOW ─────────────────────────────────────────────
+
 	private Vec3 getFollowAnchor(Player owner) {
 		Vec3 lookDirection = owner.getLookAngle();
 		Vec3 horizontalLookDirection = new Vec3(lookDirection.x, 0.0D, lookDirection.z);
@@ -849,30 +926,29 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			horizontalLookDirection = horizontalLookDirection.normalize();
 		}
 
-		Vec3 ownerPosition = owner.position();
-		return ownerPosition.subtract(horizontalLookDirection.scale(FOLLOW_DESIRED_DISTANCE));
+		return owner.position().subtract(horizontalLookDirection.scale(FOLLOW_DESIRED_DISTANCE));
 	}
 
 	private Vec3 getFollowRoamAnchor(Player owner) {
 		Vec3 ownerPosition = owner.position();
 
-		// [MUDANÇA] Raio mínimo 3.5 e máximo 5.5 — fica bem longe do player.
-		// Múltiplas tentativas para encontrar posição diferente da atual.
+		// Tenta 8 vezes encontrar posição diferente da atual.
 		for (int attempt = 0; attempt < 8; attempt++) {
 			double angle = getRandom().nextDouble() * Math.PI * 2.0D;
 			double radius = FOLLOW_ROAM_MIN_RADIUS
 					+ getRandom().nextDouble() * (FOLLOW_ROAM_MAX_RADIUS - FOLLOW_ROAM_MIN_RADIUS);
 			Vec3 candidate = ownerPosition.add(Math.cos(angle) * radius, 0.0D, Math.sin(angle) * radius);
 
-			// Garante que o candidato é diferente o suficiente da posição atual.
 			if (candidate.distanceToSqr(position()) > 2.0D) {
 				return candidate;
 			}
 		}
 
-		// Fallback: vai para trás e para o lado do dono, longe o suficiente.
+		// Fallback seguro.
 		return ownerPosition.add(0.0D, 0.0D, FOLLOW_ROAM_MIN_RADIUS + 0.5D);
 	}
+
+	// ─── Estado de movimento do dono ──────────────────────────────────────────
 
 	private boolean hasOwnerBeenStillLongEnough() {
 		return ownerStillTicks >= FOLLOW_OWNER_STATIONARY_TICKS;
@@ -917,6 +993,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		lastOwnerFollowSample = null;
 		ownerStillTicks = 0;
 	}
+
+	// ─── Suporte avançado de movimento ────────────────────────────────────────
 
 	private void tickAdvancedMovementSupport() {
 		if (movementAssistCooldown > 0) {
@@ -1016,6 +1094,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				&& navigationTarget.y > getY() + 0.4D;
 	}
 
+	// ─── Salto crítico do espadachim ──────────────────────────────────────────
+
 	private void tickMeleeCriticalJumpSupport() {
 		if (meleeCritJumpCooldown > 0) {
 			meleeCritJumpCooldown--;
@@ -1063,6 +1143,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		meleeCritJumpCooldown = MELEE_CRIT_JUMP_COOLDOWN_TICKS;
 	}
 
+	// ─── Utilitários ─────────────────────────────────────────────────────────
+
 	private Vec3 getNavigationTargetCenter() {
 		BlockPos navigationTargetPos = getNavigation().getTargetPos();
 		return navigationTargetPos != null ? Vec3.atBottomCenterOf(navigationTargetPos) : null;
@@ -1100,7 +1182,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		return target instanceof Enemy;
 	}
-
 	private boolean isValidCombatTarget(LivingEntity target, ServerLevel level) {
 		return isValidCombatTarget(target);
 	}
@@ -1133,6 +1214,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return isArcher() && getWeaponClass() == WeaponClass.BOW;
 	}
 
+	// ─── Atributos derivados ──────────────────────────────────────────────────
+
 	private void refreshDerivedAttributes() {
 		double previousMaxHealth = getAttributeValue(Attributes.MAX_HEALTH);
 		float previousHealth = getHealth();
@@ -1155,13 +1238,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		double resolvedPreviousMaxHealth = previousMaxHealth > 0.0D ? previousMaxHealth : BASE_MAX_HEALTH;
 		double healthRatio = previousHealth > 0.0F ? previousHealth / resolvedPreviousMaxHealth : 1.0D;
 
-		if (healthRatio < 0.0D) {
-			healthRatio = 0.0D;
-		}
-
-		if (healthRatio > 1.0D) {
-			healthRatio = 1.0D;
-		}
+		healthRatio = Math.max(0.0D, Math.min(1.0D, healthRatio));
 
 		setHealth((float) (getMaxHealth() * healthRatio));
 	}
@@ -1189,12 +1266,14 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		setItemSlot(EquipmentSlot.MAINHAND, mainHandStack);
 
-		// O peitoral continua salvo no blueprint e passa a servir como defesa interna.
+		// Peitoral interno — defesa via blueprint, não armadura visual.
 		setItemSlot(EquipmentSlot.CHEST, ItemStack.EMPTY);
 
 		setDropChance(EquipmentSlot.MAINHAND, 0.0F);
 		setDropChance(EquipmentSlot.CHEST, 0.0F);
 	}
+
+	// ─── Cálculo de dano ─────────────────────────────────────────────────────
 
 	private double getEffectiveMeleeAttackDamage() {
 		return soldierBlueprint.getBaseAttackDamage() + getInheritedSharpnessBonus();
@@ -1223,6 +1302,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		return INHERITED_POWER_BASE_BONUS + powerLevel * INHERITED_POWER_DAMAGE_PER_LEVEL;
 	}
+
+	// ─── Encantamentos herdados ───────────────────────────────────────────────
 
 	private int getEffectiveInheritedSharpnessLevel() {
 		return resolveEffectiveWeaponEnchantmentLevel(
@@ -1298,6 +1379,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return 0;
 	}
 
+	// ─── Componentes de UI de status ──────────────────────────────────────────
+
 	private Component getArmorTierComponent() {
 		return soldierBlueprint.chestplateStack().isEmpty()
 				? Component.translatable(getArmorTier().getTranslationKey())
@@ -1338,40 +1421,16 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		components.add(Component.translatable("text.kingdomsiege.inheritance.chestplate_header")
 				.withStyle(ChatFormatting.LIGHT_PURPLE));
 
-		appendLevelInheritanceComponent(
-				components,
-				"text.kingdomsiege.inheritance.protection",
-				soldierBlueprint.inheritedProtectionLevel(),
-				ChatFormatting.LIGHT_PURPLE
-		);
-
-		appendLevelInheritanceComponent(
-				components,
-				"text.kingdomsiege.inheritance.projectile_protection",
-				soldierBlueprint.inheritedProjectileProtectionLevel(),
-				ChatFormatting.LIGHT_PURPLE
-		);
-
-		appendLevelInheritanceComponent(
-				components,
-				"text.kingdomsiege.inheritance.blast_protection",
-				soldierBlueprint.inheritedBlastProtectionLevel(),
-				ChatFormatting.LIGHT_PURPLE
-		);
-
-		appendLevelInheritanceComponent(
-				components,
-				"text.kingdomsiege.inheritance.fire_protection",
-				soldierBlueprint.inheritedFireProtectionLevel(),
-				ChatFormatting.LIGHT_PURPLE
-		);
-
-		appendLevelInheritanceComponent(
-				components,
-				"text.kingdomsiege.inheritance.thorns",
-				soldierBlueprint.inheritedThornsLevel(),
-				ChatFormatting.LIGHT_PURPLE
-		);
+		appendLevelInheritanceComponent(components, "text.kingdomsiege.inheritance.protection",
+				soldierBlueprint.inheritedProtectionLevel(), ChatFormatting.LIGHT_PURPLE);
+		appendLevelInheritanceComponent(components, "text.kingdomsiege.inheritance.projectile_protection",
+				soldierBlueprint.inheritedProjectileProtectionLevel(), ChatFormatting.LIGHT_PURPLE);
+		appendLevelInheritanceComponent(components, "text.kingdomsiege.inheritance.blast_protection",
+				soldierBlueprint.inheritedBlastProtectionLevel(), ChatFormatting.LIGHT_PURPLE);
+		appendLevelInheritanceComponent(components, "text.kingdomsiege.inheritance.fire_protection",
+				soldierBlueprint.inheritedFireProtectionLevel(), ChatFormatting.LIGHT_PURPLE);
+		appendLevelInheritanceComponent(components, "text.kingdomsiege.inheritance.thorns",
+				soldierBlueprint.inheritedThornsLevel(), ChatFormatting.LIGHT_PURPLE);
 
 		return components;
 	}
@@ -1406,50 +1465,21 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				.withStyle(ChatFormatting.GOLD));
 
 		if (canUseBowCombat()) {
-			appendLevelInheritanceComponent(
-					components,
-					"text.kingdomsiege.inheritance.power",
-					effectivePowerLevel,
-					ChatFormatting.GOLD
-			);
-
-			appendLevelInheritanceComponent(
-					components,
-					"text.kingdomsiege.inheritance.punch",
-					effectivePunchLevel,
-					ChatFormatting.GOLD
-			);
-
-			appendLevelInheritanceComponent(
-					components,
-					"text.kingdomsiege.inheritance.flame",
-					effectiveFlameLevel,
-					ChatFormatting.GOLD
-			);
-
+			appendLevelInheritanceComponent(components, "text.kingdomsiege.inheritance.power",
+					effectivePowerLevel, ChatFormatting.GOLD);
+			appendLevelInheritanceComponent(components, "text.kingdomsiege.inheritance.punch",
+					effectivePunchLevel, ChatFormatting.GOLD);
+			appendLevelInheritanceComponent(components, "text.kingdomsiege.inheritance.flame",
+					effectiveFlameLevel, ChatFormatting.GOLD);
 			return components;
 		}
 
-		appendLevelInheritanceComponent(
-				components,
-				"text.kingdomsiege.inheritance.sharpness",
-				effectiveSharpnessLevel,
-				ChatFormatting.GOLD
-		);
-
-		appendLevelInheritanceComponent(
-				components,
-				"text.kingdomsiege.inheritance.fire_aspect",
-				effectiveFireAspectLevel,
-				ChatFormatting.GOLD
-		);
-
-		appendLevelInheritanceComponent(
-				components,
-				"text.kingdomsiege.inheritance.knockback",
-				effectiveKnockbackLevel,
-				ChatFormatting.GOLD
-		);
+		appendLevelInheritanceComponent(components, "text.kingdomsiege.inheritance.sharpness",
+				effectiveSharpnessLevel, ChatFormatting.GOLD);
+		appendLevelInheritanceComponent(components, "text.kingdomsiege.inheritance.fire_aspect",
+				effectiveFireAspectLevel, ChatFormatting.GOLD);
+		appendLevelInheritanceComponent(components, "text.kingdomsiege.inheritance.knockback",
+				effectiveKnockbackLevel, ChatFormatting.GOLD);
 
 		return components;
 	}
@@ -1468,23 +1498,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				Component.literal("• ")
 						.append(Component.translatable(inheritanceKey))
 						.append(Component.literal(" " + toRoman(level)))
-						.withStyle(color)
-		);
-	}
-
-	private void appendFlagInheritanceComponent(
-			List<Component> components,
-			String inheritanceKey,
-			boolean enabled,
-			ChatFormatting color
-	) {
-		if (!enabled) {
-			return;
-		}
-
-		components.add(
-				Component.literal("• ")
-						.append(Component.translatable(inheritanceKey))
 						.withStyle(color)
 		);
 	}
@@ -1522,7 +1535,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	}
 
 	private void sendBasicStatusTo(Player player) {
-		// Cabeçalho: nome de exibição, classe e modo atual.
 		player.sendSystemMessage(Component.translatable(
 				"message.kingdomsiege.soldier_status.header",
 				getSoldierDisplayName(),
@@ -1530,7 +1542,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				Component.translatable(getSoldierMode().getTranslationKey())
 		));
 
-		// Equipamento: arma, armadura, catalisador.
 		player.sendSystemMessage(Component.translatable(
 				"message.kingdomsiege.soldier_status.combat",
 				getWeaponClassComponent(),
@@ -1538,7 +1549,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				getCatalystComponent()
 		));
 
-		// Atributos: vida atual/máxima, armadura, dureza.
 		player.sendSystemMessage(Component.translatable(
 				"message.kingdomsiege.soldier_status.attributes",
 				Math.round(getHealth()),
@@ -1547,29 +1557,26 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				Math.round(getAttributeValue(Attributes.ARMOR_TOUGHNESS))
 		));
 
-		// Poder de combate (melee ou ranged).
 		player.sendSystemMessage(getCombatPowerComponent());
 
-		// [FASE 6] Patente e XP militar.
 		player.sendSystemMessage(Component.translatable(
 				"message.kingdomsiege.soldier_status.rank",
 				Component.translatable(getSoldierRank().getTranslationKey()),
 				getMilitaryXp()
 		));
 
-		// Encantamentos herdados do peitoral.
 		for (Component line : getInheritedChestplateEnchantmentsComponents()) {
 			player.sendSystemMessage(line);
 		}
 
-		// Encantamentos herdados da arma.
 		for (Component line : getInheritedWeaponEnchantmentsComponents()) {
 			player.sendSystemMessage(line);
 		}
 
-		// Território: posição do posto e raio de guarda.
 		player.sendSystemMessage(getTerritoryStatusComponent());
 	}
+
+	// ─── Serialização ─────────────────────────────────────────────────────────
 
 	@Override
 	protected void addAdditionalSaveData(ValueOutput valueOutput) {
@@ -1578,7 +1585,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		valueOutput.store("SoldierMode", SoldierMode.CODEC, soldierMode);
 		valueOutput.storeNullable("OwnerUuid", UUIDUtil.STRING_CODEC, ownerUuid);
 		valueOutput.store("GuardRadius", Codec.INT, guardRadius);
-		// [FASE 6] Identidade persistida.
 		valueOutput.store("SoldierIdentity", SoldierIdentityData.CODEC, soldierIdentity);
 		valueOutput.storeNullable("HomePosX", Codec.INT, homePos != null ? homePos.getX() : null);
 		valueOutput.storeNullable("HomePosY", Codec.INT, homePos != null ? homePos.getY() : null);
@@ -1588,13 +1594,14 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	@Override
 	protected void readAdditionalSaveData(ValueInput valueInput) {
 		super.readAdditionalSaveData(valueInput);
-		applyBlueprint(valueInput.read("SoldierBlueprint", SoldierBlueprintData.CODEC).orElse(SoldierBlueprintData.defaultRecruit()));
+		applyBlueprint(valueInput.read("SoldierBlueprint", SoldierBlueprintData.CODEC)
+				.orElse(SoldierBlueprintData.defaultRecruit()));
 		setSoldierMode(valueInput.read("SoldierMode", SoldierMode.CODEC).orElse(SoldierMode.GUARD));
 		setOwnerUuid(valueInput.read("OwnerUuid", UUIDUtil.STRING_CODEC).orElse(null));
 		setGuardRadius(valueInput.read("GuardRadius", Codec.INT).orElse(DEFAULT_GUARD_RADIUS));
-		// [FASE 6] Identidade persistida.
 		setSoldierIdentity(valueInput.read("SoldierIdentity", SoldierIdentityData.CODEC)
 				.orElseGet(SoldierIdentityData::defaultRecruit));
+
 		Integer homePosX = valueInput.read("HomePosX", Codec.INT).orElse(null);
 		Integer homePosY = valueInput.read("HomePosY", Codec.INT).orElse(null);
 		Integer homePosZ = valueInput.read("HomePosZ", Codec.INT).orElse(null);
@@ -1605,6 +1612,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			clearHomePos();
 		}
 	}
+
+	// ─── Interação com o dono ─────────────────────────────────────────────────
 
 	@Override
 	protected InteractionResult mobInteract(Player player, InteractionHand hand) {
@@ -1643,16 +1652,12 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	/**
 	 * Chamado pelo Minecraft toda vez que esta entidade mata outra.
-	 * Usamos para conceder XP militar e verificar promoção de rank.
-	 *
-	 * O jogador continua recebendo normalmente o XP vanilla do inimigo morto —
-	 * o soldado apenas acumula XP interno próprio, sem conflito.
+	 * Concede XP militar e verifica promoção de rank.
 	 */
 	@Override
 	public boolean killedEntity(ServerLevel level, LivingEntity killedEntity, DamageSource damageSource) {
 		boolean result = super.killedEntity(level, killedEntity, damageSource);
 
-		// Apenas inimigos válidos concedem XP (não aliados, não neutros sem motivo).
 		int xpGain = resolveXpGainFor(killedEntity);
 		if (xpGain <= 0) {
 			return result;
@@ -1662,7 +1667,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		setSoldierIdentity(soldierIdentity.earnXp(xpGain));
 		SoldierRank rankAfter = getSoldierRank();
 
-		// Se houve promoção, notifica o dono se estiver online.
 		if (rankAfter.ordinal() > rankBefore.ordinal()) {
 			notifyOwnerOfPromotion(level, rankAfter);
 		}
@@ -1670,31 +1674,21 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return result;
 	}
 
-	/**
-	 * Define quantos pontos de XP militar o soldado ganha ao matar esta entidade.
-	 * Segue a regra: inimigos comuns = 5, inimigos com armadura/boss-like = 15.
-	 * Ajuste os valores aqui conforme o balanceamento do projeto evoluir.
-	 */
 	private int resolveXpGainFor(LivingEntity killed) {
 		if (killed == null) {
 			return 0;
 		}
-		// Não concede XP por matar aliados ou o próprio dono (segurança).
 		if (killed instanceof CastleSoldierEntity) {
 			return 0;
 		}
 		if (killed instanceof Player) {
 			return 0;
 		}
-		// Mobs com muita vida ou armadura alta são tratados como "elite".
-		boolean isElite = killed.getMaxHealth() >= 40f
-				|| killed.getArmorValue() >= 10;
+
+		boolean isElite = killed.getMaxHealth() >= 40f || killed.getArmorValue() >= 10;
 		return isElite ? 15 : 5;
 	}
 
-	/**
-	 * Envia mensagem de promoção de rank ao jogador dono, se ele estiver online.
-	 */
 	private void notifyOwnerOfPromotion(ServerLevel level, SoldierRank newRank) {
 		Player owner = getValidOwnerPlayer();
 		if (owner == null) {
@@ -1707,6 +1701,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		));
 	}
 
+	// ─── Ataque ranged (arqueiro) ─────────────────────────────────────────────
 
 	@Override
 	public void performRangedAttack(LivingEntity target, float velocity) {
@@ -1734,7 +1729,11 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		level().addFreshEntity(arrow);
 	}
 
-	// ─── Goals internos ───────────────────────────────────────────────────────
+	// ═════════════════════════════════════════════════════════════════════════
+	// Goals internos
+	// ═════════════════════════════════════════════════════════════════════════
+
+	// ─── Proteger dono quando atacado ────────────────────────────────────────
 
 	private static final class ProtectOwnerWhenHurtGoal extends Goal {
 		private final CastleSoldierEntity soldier;
@@ -1798,6 +1797,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 	}
 
+	// ─── Assistir alvo atacado pelo dono ─────────────────────────────────────
+
 	private static final class AssistOwnerAttackTargetGoal extends Goal {
 		private final CastleSoldierEntity soldier;
 		private LivingEntity ownerTarget;
@@ -1860,6 +1861,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 	}
 
+	// ─── Melee do espadachim ──────────────────────────────────────────────────
+
 	private static final class SwordsmanMeleeAttackGoal extends MeleeAttackGoal {
 		private final CastleSoldierEntity soldier;
 
@@ -1878,6 +1881,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			return soldier.canUseSwordCombat() && super.canContinueToUse();
 		}
 	}
+
+	// ─── Alvo hostil do espadachim ────────────────────────────────────────────
 
 	private static final class SwordsmanNearestHostileTargetGoal extends NearestAttackableTargetGoal<Mob> {
 		private final CastleSoldierEntity soldier;
@@ -1898,6 +1903,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 	}
 
+	// ─── Alvo hostil do arqueiro ──────────────────────────────────────────────
+
 	private static final class ArcherNearestHostileTargetGoal extends NearestAttackableTargetGoal<Mob> {
 		private final CastleSoldierEntity soldier;
 
@@ -1916,6 +1923,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			return soldier.canUseBowCombat() && soldier.canAutoAcquireHostileTarget() && super.canContinueToUse();
 		}
 	}
+
+	// ─── Goal ranged do arqueiro ──────────────────────────────────────────────
 
 	private static final class ArcherRangedAttackGoal extends Goal {
 		private final CastleSoldierEntity soldier;
@@ -2007,6 +2016,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 	}
 
+	// ─── Retorno ao posto (GUARD) ─────────────────────────────────────────────
+
 	private static final class ReturnToHomePosGoal extends Goal {
 		private final CastleSoldierEntity soldier;
 		private final double speedModifier;
@@ -2051,6 +2062,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 	}
 
+	// ─── Pausa no posto (GUARD) ───────────────────────────────────────────────
+
 	private static final class GuardHomePauseGoal extends Goal {
 		private final CastleSoldierEntity soldier;
 		private int remainingTicks;
@@ -2085,7 +2098,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		@Override
 		public void start() {
-			remainingTicks = GUARD_HOME_HOLD_MIN_TICKS + soldier.getRandom().nextInt(GUARD_HOME_HOLD_MAX_TICKS - GUARD_HOME_HOLD_MIN_TICKS + 1);
+			remainingTicks = GUARD_HOME_HOLD_MIN_TICKS
+					+ soldier.getRandom().nextInt(GUARD_HOME_HOLD_MAX_TICKS - GUARD_HOME_HOLD_MIN_TICKS + 1);
 			soldier.getNavigation().stop();
 		}
 
@@ -2103,8 +2117,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 	}
 
-	// [MUDANÇA] GuardModeRandomStrollGoal agora usa homePos como centro de vagar.
-	// Antes usava a posição atual do soldado, que limitava o raio percorrido.
+	// ─── Patrulha aleatória centrada no homePos (GUARD) ──────────────────────
+
 	private static final class GuardModeRandomStrollGoal extends RandomStrollGoal {
 		private final CastleSoldierEntity soldier;
 
@@ -2129,8 +2143,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 					&& super.canContinueToUse();
 		}
 
-		// [NOVO] Escolhe destino de patrulha com centro em homePos e raio = guardRadius.
-		// Garante que o soldado circule por toda a área de guarda, não só perto do ponto atual.
+		/** Destino centrado no homePos, cobre toda a área de guarda. */
 		@Override
 		protected Vec3 getPosition() {
 			if (!soldier.hasHomePos()) {
@@ -2142,26 +2155,22 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 			for (int attempt = 0; attempt < 10; attempt++) {
 				double angle = soldier.getRandom().nextDouble() * Math.PI * 2.0D;
-				// Varia entre 35% e 100% do raio para cobrir toda a área.
+				// Entre 35% e 100% do raio para cobrir toda a área.
 				double dist = radius * (0.35D + soldier.getRandom().nextDouble() * 0.65D);
 				Vec3 candidate = home.add(Math.cos(angle) * dist, 0.0D, Math.sin(angle) * dist);
 
-				// Verifica se há bloco sólido embaixo — posição caminhável.
 				BlockPos blockPos = BlockPos.containing(candidate);
 				if (soldier.level().getBlockState(blockPos.below()).isSolid()) {
 					return candidate;
 				}
 			}
 
-			// Fallback: comportamento vanilla do RandomStrollGoal.
 			return super.getPosition();
 		}
 	}
 
-	// [MUDANÇA] FollowOwnerGoal com roam melhorado:
-	// — Raio mínimo 3.5 blocos do dono (não invade espaço do player).
-	// — Repouso em cada destino antes de escolher novo (3-6 segundos).
-	// — Retoma seguir imediatamente quando dono começa a andar.
+	// ─── Seguir dono (FOLLOW) ─────────────────────────────────────────────────
+
 	private static final class FollowOwnerGoal extends Goal {
 		private final CastleSoldierEntity soldier;
 		private final double speedModifier;
@@ -2170,8 +2179,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		private int timeToRecalculatePath;
 		private Vec3 roamAnchor;
 		private int roamRecalculateTicks;
-
-		// [NOVO] Tempo de descanso no destino antes de escolher novo ponto de vagar.
 		private int roamRestTicks;
 
 		private FollowOwnerGoal(CastleSoldierEntity soldier, double speedModifier, double startDistance, double stopDistance) {
@@ -2218,8 +2225,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 			double distanceToOwnerSqr = soldier.distanceToSqr(owner);
 
-			// [NOVO] Se estava vagrando e dono voltou a andar: cancela descanso
-			// e continua o goal somente se precisar seguir.
+			// Dono voltou a andar: cancela descanso e só continua se precisar seguir.
 			if (!soldier.hasOwnerBeenStillLongEnough()) {
 				roamRestTicks = 0;
 				return distanceToOwnerSqr > stopDistanceSqr;
@@ -2284,10 +2290,12 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			}
 		}
 
-		// [MUDANÇA] Roam com repouso: anda até o destino, descansa 3-6 segundos,
-		// depois escolhe novo ponto. Nunca fica circulando sem parar.
+		/**
+		 * Vaga ao redor do dono parado.
+		 * [FASE 4] Usa FOLLOW_ROAM_ARRIVAL_THRESHOLD_SQR (4.0D = 2 blocos) para
+		 * registrar chegada com folga, evitando oscilação no mesmo ponto.
+		 */
 		private void tickRoamAroundOwner(Player owner) {
-			// Se dono voltou a andar, abandona o roam imediatamente.
 			if (!soldier.hasOwnerBeenStillLongEnough()) {
 				roamAnchor = null;
 				roamRestTicks = 0;
@@ -2295,22 +2303,21 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				return;
 			}
 
-			// Fase de descanso: chegou ao destino, aguarda antes de escolher novo.
+			// Fase de repouso: chegou ao destino, descansa antes de ir ao próximo.
 			if (roamRestTicks > 0) {
 				roamRestTicks--;
 				soldier.getNavigation().stop();
 				return;
 			}
 
-			// Chegou próximo do anchor atual → inicia repouso.
-			if (roamAnchor != null && soldier.position().distanceToSqr(roamAnchor) <= 2.0D) {
+			// [FASE 4] Threshold de chegada ajustado para 2 blocos (era 1.41).
+			if (roamAnchor != null && soldier.position().distanceToSqr(roamAnchor) <= FOLLOW_ROAM_ARRIVAL_THRESHOLD_SQR) {
 				roamRestTicks = FOLLOW_ROAM_REST_MIN_TICKS
 						+ soldier.getRandom().nextInt(FOLLOW_ROAM_REST_MAX_TICKS - FOLLOW_ROAM_REST_MIN_TICKS + 1);
 				soldier.getNavigation().stop();
 				return;
 			}
 
-			// Precisa de novo destino: sem anchor, timeout ou travado.
 			boolean needsNewAnchor = roamAnchor == null
 					|| --roamRecalculateTicks <= 0
 					|| soldier.getNavigation().isStuck();
@@ -2323,6 +2330,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			}
 		}
 
+		/** Teleporta o soldado para perto do dono quando a distância é absurda (>24 blocos). */
 		private void rejoinNearOwner(Player owner) {
 			Vec3 followAnchor = soldier.getFollowAnchor(owner);
 
