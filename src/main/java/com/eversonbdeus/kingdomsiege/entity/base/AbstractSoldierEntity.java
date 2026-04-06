@@ -1,11 +1,16 @@
 package com.eversonbdeus.kingdomsiege.entity.base;
 
 import com.eversonbdeus.kingdomsiege.soldier.SoldierBlueprintData;
+import com.eversonbdeus.kingdomsiege.soldier.SoldierIdentityData;
 import com.eversonbdeus.kingdomsiege.soldier.SoldierMode;
+import com.eversonbdeus.kingdomsiege.soldier.SoldierRank;
 import com.mojang.serialization.Codec;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.UUIDUtil;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
@@ -20,6 +25,7 @@ import java.util.UUID;
  *
  * Centraliza os dados e comportamentos comuns:
  * — ownerUuid, SoldierBlueprintData, SoldierMode, homePos, guardRadius
+ * — SoldierIdentityData: nome, rank, título ativo, XP militar
  *
  * API de serialização do MC 26.1:
  * — ValueOutput (net.minecraft.world.level.storage) para escrita
@@ -37,6 +43,10 @@ public abstract class AbstractSoldierEntity extends PathfinderMob {
     private SoldierMode commandMode = SoldierMode.GUARD;
     private BlockPos homePos;
     private int guardRadius = 16;
+
+    // Identidade persistida: nome, rank, título ativo, XP militar.
+    // Nasce como recruta vazio e avança com o tempo.
+    private SoldierIdentityData identity = SoldierIdentityData.freshRecruit();
 
     // ─── Construtor ──────────────────────────────────────────────────────────
 
@@ -93,6 +103,7 @@ public abstract class AbstractSoldierEntity extends PathfinderMob {
 
     /**
      * Inicializa a unidade completa após spawn via SoldierSpawnEggItem.
+     * A identidade começa como recruta fresh sem nome, sem título, XP zero.
      */
     public void initializeFromBlueprint(SoldierBlueprintData blueprint, UUID ownerUuid, BlockPos spawnPos) {
         this.setOwnerUuid(ownerUuid);
@@ -100,6 +111,7 @@ public abstract class AbstractSoldierEntity extends PathfinderMob {
         this.setCommandMode(SoldierMode.GUARD);
         this.setGuardRadius(16);
         this.setBlueprint(blueprint);
+        this.setIdentity(SoldierIdentityData.freshRecruit());
     }
 
     // ─── Dono ────────────────────────────────────────────────────────────────
@@ -159,6 +171,69 @@ public abstract class AbstractSoldierEntity extends PathfinderMob {
         return (dx * dx + dy * dy + dz * dz) > (double) (guardRadius * guardRadius);
     }
 
+    // ─── Identidade militar ───────────────────────────────────────────────────
+
+    public SoldierIdentityData getIdentity() {
+        return identity;
+    }
+
+    public void setIdentity(SoldierIdentityData identity) {
+        this.identity = (identity != null) ? identity : SoldierIdentityData.freshRecruit();
+    }
+
+    /**
+     * Adiciona XP militar ao soldado.
+     *
+     * Se o XP acumulado for suficiente para uma promoção, o rank sobe
+     * automaticamente (tratado dentro de SoldierIdentityData.earnXp).
+     *
+     * Se o rank subiu e o mundo for servidor, envia mensagem ao dono.
+     *
+     * @param xpGain quantidade de XP a ganhar (valores ≤ 0 são ignorados)
+     */
+    public void earnMilitaryXp(int xpGain) {
+        if (xpGain <= 0) return;
+
+        SoldierRank rankBefore = identity.rank();
+        SoldierIdentityData updated = identity.earnXp(xpGain);
+        setIdentity(updated);
+
+        // Notifica o dono no servidor se o rank subiu.
+        if (!this.level().isClientSide()
+                && updated.rank() != rankBefore
+                && ownerUuid != null
+                && this.level() instanceof ServerLevel serverLevel) {
+
+            Player owner = serverLevel.getPlayerByUUID(ownerUuid);
+            if (owner != null) {
+                owner.sendSystemMessage(
+                        Component.literal("⬆ ")
+                                .append(this.getName())
+                                .append(Component.literal(" foi promovido: "))
+                                .append(Component.translatable(updated.rank().getTranslationKey()))
+                );
+            }
+        }
+    }
+
+    /**
+     * Chamado quando esta unidade mata um inimigo.
+     *
+     * Concede XP militar baseado no tipo de alvo.
+     * Subclasses podem sobrescrever para ajustar valores por classe.
+     *
+     * Valores base do MVP:
+     *   - mob hostil comum → 3 XP
+     *   - mob boss (>100 HP max) → 15 XP
+     */
+    protected void onKilledEnemy(LivingEntity target) {
+        if (target == null) return;
+
+        float targetMaxHealth = target.getMaxHealth();
+        int xpReward = (targetMaxHealth > 100.0F) ? 15 : 3;
+        earnMilitaryXp(xpReward);
+    }
+
     // ─── Persistência — MC 26.1 ValueOutput / ValueInput ─────────────────────
 
     @Override
@@ -176,6 +251,11 @@ public abstract class AbstractSoldierEntity extends PathfinderMob {
         valueOutput.storeNullable("HomePosX", Codec.INT, homePos != null ? homePos.getX() : null);
         valueOutput.storeNullable("HomePosY", Codec.INT, homePos != null ? homePos.getY() : null);
         valueOutput.storeNullable("HomePosZ", Codec.INT, homePos != null ? homePos.getZ() : null);
+        valueOutput.store(
+                "SoldierIdentity",
+                SoldierIdentityData.CODEC,
+                identity
+        );
     }
 
     @Override
@@ -202,5 +282,10 @@ public abstract class AbstractSoldierEntity extends PathfinderMob {
         if (x != null && y != null && z != null) {
             setHomePos(new BlockPos(x, y, z));
         }
+
+        setIdentity(
+                valueInput.read("SoldierIdentity", SoldierIdentityData.CODEC)
+                        .orElse(SoldierIdentityData.freshRecruit())
+        );
     }
 }
