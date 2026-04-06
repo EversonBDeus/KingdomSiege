@@ -99,6 +99,14 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	// O soldado persegue até guardRadius + 12 blocos antes de abandonar o alvo.
 	private static final double GUARD_CHASE_LEASH = 12.0D;
 
+	// ─── [FASE 5] Limite de seguidores por classe ─────────────────────────────
+
+	// Máximo de espadachins em modo FOLLOW simultaneamente por dono.
+	private static final int MAX_FOLLOW_SWORDSMEN = 3;
+
+	// Máximo de arqueiros em modo FOLLOW simultaneamente por dono.
+	private static final int MAX_FOLLOW_ARCHERS = 2;
+
 	private static final double GUARD_HOME_HOLD_DISTANCE = 1.75D;
 	private static final int GUARD_HOME_HOLD_MIN_TICKS = 30;
 	private static final int GUARD_HOME_HOLD_MAX_TICKS = 70;
@@ -134,8 +142,10 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final double FOLLOW_MOVE_SPEED = 1.15D;
 	private static final double FOLLOW_REJOIN_DISTANCE = 24.0D;
 	private static final double FOLLOW_REJOIN_DISTANCE_SQR = FOLLOW_REJOIN_DISTANCE * FOLLOW_REJOIN_DISTANCE;
-	// Espera 15 segundos parado antes de começar a vagar.
-	private static final int FOLLOW_OWNER_STATIONARY_TICKS = 300;
+
+	// Espera 4 segundos parado antes de começar a vagar.
+	private static final int FOLLOW_OWNER_STATIONARY_TICKS = 80;
+
 	private static final double FOLLOW_OWNER_MOVEMENT_TOLERANCE = 0.04D;
 	private static final double FOLLOW_OWNER_MOVEMENT_TOLERANCE_SQR =
 			FOLLOW_OWNER_MOVEMENT_TOLERANCE * FOLLOW_OWNER_MOVEMENT_TOLERANCE;
@@ -367,6 +377,12 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			if (resolvedMode == SoldierMode.GUARD) {
 				getNavigation().stop();
 			}
+			return;
+		}
+
+		// [FASE 5] Bloqueia FOLLOW se o limite de seguidores da classe foi atingido.
+		if (resolvedMode == SoldierMode.FOLLOW && !isFollowSlotAvailable()) {
+			notifyOwnerFollowLimitReached();
 			return;
 		}
 
@@ -1159,6 +1175,52 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		getNavigation().stop();
 	}
 
+	// ─── [FASE 5] Controle de limite de seguidores ───────────────────────────
+
+	/**
+	 * Conta quantos soldados do mesmo dono e da mesma classe
+	 * estão atualmente em modo FOLLOW no nível (não conta a si mesmo).
+	 */
+	private int countFollowersOfClass(SoldierClass targetClass) {
+		if (ownerUuid == null || !(level() instanceof ServerLevel serverLevel)) {
+			return 0;
+		}
+
+		List<CastleSoldierEntity> followers = serverLevel.getEntitiesOfClass(
+				CastleSoldierEntity.class,
+				getBoundingBox().inflate(256.0D),
+				e -> e != this
+						&& ownerUuid.equals(e.getOwnerUuid())
+						&& e.isFollowMode()
+						&& e.getSoldierClass() == targetClass
+		);
+
+		return followers.size();
+	}
+
+	/** Limite máximo de seguidores permitido para a classe deste soldado. */
+	private int getMaxFollowersForMyClass() {
+		return isSwordsman() ? MAX_FOLLOW_SWORDSMEN : MAX_FOLLOW_ARCHERS;
+	}
+
+	/** Retorna true se ainda há vaga para este soldado entrar em FOLLOW. */
+	private boolean isFollowSlotAvailable() {
+		return countFollowersOfClass(getSoldierClass()) < getMaxFollowersForMyClass();
+	}
+
+	/** Notifica o dono que o limite de seguidores da classe foi atingido. */
+	private void notifyOwnerFollowLimitReached() {
+		Player owner = getValidOwnerPlayer();
+		if (owner == null) {
+			return;
+		}
+		owner.sendSystemMessage(Component.translatable(
+				"message.kingdomsiege.follow_limit_reached",
+				Component.translatable(getSoldierClass().getTranslationKey()),
+				getMaxFollowersForMyClass()
+		));
+	}
+
 	private Player getValidOwnerPlayer() {
 		Player owner = getOwnerPlayer();
 
@@ -1179,9 +1241,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 
 		return target instanceof Enemy;
-	}
-	private boolean isValidCombatTarget(LivingEntity target, ServerLevel level) {
-		return isValidCombatTarget(target);
 	}
 
 	private boolean isFriendlyEntity(LivingEntity entity) {
@@ -1886,7 +1945,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		private final CastleSoldierEntity soldier;
 
 		private SwordsmanNearestHostileTargetGoal(CastleSoldierEntity soldier) {
-			super(soldier, Mob.class, 10, true, false, soldier::isValidCombatTarget);
+			super(soldier, Mob.class, 10, true, false, (target, level) -> soldier.isValidCombatTarget(target));
 			this.soldier = soldier;
 		}
 
@@ -1907,7 +1966,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		private final CastleSoldierEntity soldier;
 
 		private ArcherNearestHostileTargetGoal(CastleSoldierEntity soldier) {
-			super(soldier, Mob.class, 10, true, false, soldier::isValidCombatTarget);
+			super(soldier, Mob.class, 10, true, false, (target, level) -> soldier.isValidCombatTarget(target));
 			this.soldier = soldier;
 		}
 

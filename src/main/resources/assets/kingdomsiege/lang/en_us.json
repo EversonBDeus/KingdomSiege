@@ -56,7 +56,10 @@
   "soldier_title.deaths_laughter": "Death's Laughter",
   "soldier_title.last_of_the_wall": "Last of the Wall",
 
+
   "message.kingdomsiege.soldier_mode_changed": "Soldier mode: %s",
+  "message.kingdomsiege.soldier_rank_up": "⬆ %1$s was promoted! New rank: %2$s",
+  "message.kingdomsiege.soldier_xp_debug": "%1$s gained %2$s military XP (total: %3$s)",
   "message.kingdomsiege.soldier_status.header": "Status of %1$s | Class: %2$s | Mode: %3$s",
   "message.kingdomsiege.soldier_status.combat": "Base weapon: %1$s | Internal chestplate: %2$s | Catalyst: %3$s",
 
@@ -89,5 +92,7 @@
   "text.kingdomsiege.inheritance.knockback": "Knockback",
   "text.kingdomsiege.inheritance.power": "Power",
   "text.kingdomsiege.inheritance.punch": "Punch",
-  "text.kingdomsiege.inheritance.flame": "Flame"
+  "text.kingdomsiege.inheritance.flame": "Flame",
+
+  "message.kingdomsiege.follow_limit_reached": "⚠ Follow limit reached for %1$s (max: %2$s)"
 }

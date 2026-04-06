@@ -57,6 +57,8 @@
   "soldier_title.last_of_the_wall": "Último da Muralha",
 
   "message.kingdomsiege.soldier_mode_changed": "Modo do soldado: %s",
+  "message.kingdomsiege.soldier_rank_up": "⬆ %1$s foi promovido! Nova patente: %2$s",
+  "message.kingdomsiege.soldier_xp_debug": "%1$s ganhou %2$s XP militar (total: %3$s)",
   "message.kingdomsiege.soldier_status.header": "Status de %1$s | Classe: %2$s | Modo: %3$s",
   "message.kingdomsiege.soldier_status.combat": "Arma base: %1$s | Peitoral interno: %2$s | Catalisador: %3$s",
   "message.kingdomsiege.soldier_status.attributes": "Vida: %1$s/%2$s | Armadura: %3$s | Toughness: %4$s",
@@ -88,5 +90,7 @@
   "text.kingdomsiege.inheritance.knockback": "Repulsão",
   "text.kingdomsiege.inheritance.power": "Força",
   "text.kingdomsiege.inheritance.punch": "Impacto",
-  "text.kingdomsiege.inheritance.flame": "Chama"
+  "text.kingdomsiege.inheritance.flame": "Chama",
+
+  "message.kingdomsiege.follow_limit_reached": "⚠ Limite de seguidores atingido para %1$s (máx: %2$s)"
 }
