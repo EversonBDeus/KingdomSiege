@@ -134,10 +134,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final double FOLLOW_MOVE_SPEED = 1.15D;
 	private static final double FOLLOW_REJOIN_DISTANCE = 24.0D;
 	private static final double FOLLOW_REJOIN_DISTANCE_SQR = FOLLOW_REJOIN_DISTANCE * FOLLOW_REJOIN_DISTANCE;
-
-	// Espera 4 segundos parado antes de começar a vagar.
-	private static final int FOLLOW_OWNER_STATIONARY_TICKS = 80;
-
+	// Espera 15 segundos parado antes de começar a vagar.
+	private static final int FOLLOW_OWNER_STATIONARY_TICKS = 300;
 	private static final double FOLLOW_OWNER_MOVEMENT_TOLERANCE = 0.04D;
 	private static final double FOLLOW_OWNER_MOVEMENT_TOLERANCE_SQR =
 			FOLLOW_OWNER_MOVEMENT_TOLERANCE * FOLLOW_OWNER_MOVEMENT_TOLERANCE;
