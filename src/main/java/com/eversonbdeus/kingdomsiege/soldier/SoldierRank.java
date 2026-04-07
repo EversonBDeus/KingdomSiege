@@ -11,10 +11,17 @@ import java.util.Locale;
  * acumulada ao longo das batalhas. Responde à pergunta: "qual a patente desse soldado?".
  *
  * Separado de {@link SoldierTitleId} (identidade lendária) e de conquistas
- * (histórico de marcos). Cada camada cumpre um papel diferente.
+ * (histórico rastreável). Cada camada cumpre um papel diferente.
  *
  * Progressão linear por XP:
  *   RECRUIT  →  SOLDIER  →  VETERAN  →  SERGEANT  →  CHAMPION
+ *
+ * Limiares de XP:
+ *   RECRUIT   = 0
+ *   SOLDIER   = 50
+ *   VETERAN   = 150
+ *   SERGEANT  = 350
+ *   CHAMPION  = 700
  *
  * Referência: docs 07, 13, 18 do projeto Kingdom Siege.
  */

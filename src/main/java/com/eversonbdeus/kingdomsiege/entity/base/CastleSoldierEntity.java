@@ -475,9 +475,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return soldierIdentity;
 	}
 
-	/**
-	 * [FASE 4] Bug corrigido: a atribuição estava triplicada no código anterior.
-	 */
 	public void setSoldierIdentity(SoldierIdentityData identity) {
 		this.soldierIdentity = identity != null ? identity : SoldierIdentityData.defaultRecruit();
 	}
