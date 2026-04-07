@@ -44,8 +44,10 @@ public class CastleSoldierRenderer extends HumanoidMobRenderer<CastleSoldierEnti
 			return;
 		}
 
-		if (entity.getSoldierClass() == SoldierClass.ARCHER && entity.getTarget() != null) {
-			renderState.rightArmPose = HumanoidModel.ArmPose.BOW_AND_ARROW;
+		if (entity.getSoldierClass() == SoldierClass.ARCHER) {
+			renderState.rightArmPose = entity.isUsingItem()
+					? HumanoidModel.ArmPose.BOW_AND_ARROW
+					: HumanoidModel.ArmPose.ITEM;
 			return;
 		}
 

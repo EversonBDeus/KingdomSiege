@@ -129,6 +129,11 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final int ARCHER_REPOSITION_INTERVAL_TICKS = 12;
 	private static final int ARCHER_ATTACK_INTERVAL_TICKS = 30;
 	private static final float ARCHER_PROJECTILE_VELOCITY = 1.6F;
+	private static final int ARCHER_BOW_DRAW_TICKS = 12;
+	private static final double ARCHER_PROJECTILE_FORWARD_OFFSET = 0.55D;
+	private static final double ARCHER_PROJECTILE_SIDE_OFFSET = 0.28D;
+	private static final double ARCHER_PROJECTILE_HEIGHT_OFFSET = 0.18D;
+
 
 	// ─── [COMBATE] Progressão por rank ─────────────────────────────────────
 	// Inaccuracy da flecha por rank (Skeleton-Hard usa ~2.0; RECRUIT é pior que skele-normal)
@@ -713,6 +718,9 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	@Override
 	public boolean doHurtTarget(ServerLevel serverLevel, Entity target) {
+		// Garante o swing visual da arma na mão.
+		swing(InteractionHand.MAIN_HAND);
+
 		boolean damaged = super.doHurtTarget(serverLevel, target);
 
 		if (!damaged || !(target instanceof LivingEntity livingTarget)) {
@@ -730,6 +738,21 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	private void applyInheritedProjectileEnchantments(Arrow arrow) {
 		applyInheritedFlame(arrow);
+	}
+	private Vec3 getBowProjectileSpawnPos() {
+		double yawRadians = Math.toRadians(getYRot());
+
+		double spawnX = getX()
+				- Math.sin(yawRadians) * ARCHER_PROJECTILE_FORWARD_OFFSET
+				- Math.cos(yawRadians) * ARCHER_PROJECTILE_SIDE_OFFSET;
+
+		double spawnY = getEyeY() - ARCHER_PROJECTILE_HEIGHT_OFFSET;
+
+		double spawnZ = getZ()
+				+ Math.cos(yawRadians) * ARCHER_PROJECTILE_FORWARD_OFFSET
+				- Math.sin(yawRadians) * ARCHER_PROJECTILE_SIDE_OFFSET;
+
+		return new Vec3(spawnX, spawnY, spawnZ);
 	}
 
 	private void applyInheritedFlame(Arrow arrow) {
@@ -1903,10 +1926,10 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	}
 
 	// ─── Ataque ranged (arqueiro) ─────────────────────────────────────────────
-
 	@Override
 	public void performRangedAttack(LivingEntity target, float velocity) {
 		if (!canUseBowCombat() || !isValidCombatTarget(target)) {
+			stopUsingItem();
 			return;
 		}
 
@@ -1915,17 +1938,29 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				? new ItemStack(Items.BOW)
 				: soldierBlueprint.weaponStack().copy();
 
+		Vec3 spawnPos = getBowProjectileSpawnPos();
 		Arrow arrow = new Arrow(level(), this, arrowStack, weaponStack);
+		arrow.setPos(spawnPos.x, spawnPos.y, spawnPos.z);
 
-		double deltaX = target.getX() - getX();
-		double deltaY = target.getEyeY() - arrow.getY();
-		double deltaZ = target.getZ() - getZ();
+		double deltaX = target.getX() - spawnPos.x;
+		double deltaY = target.getEyeY() - spawnPos.y;
+		double deltaZ = target.getZ() - spawnPos.z;
 		double horizontalDistance = Math.sqrt(deltaX * deltaX + deltaZ * deltaZ);
+
+		float resolvedVelocity = velocity > 0.0F ? velocity : getRankArcherVelocity();
 
 		arrow.setBaseDamage(getEffectiveProjectileBaseDamage());
 		// [COMBATE] Inaccuracy e velocidade escalam com o rank do soldado.
-		arrow.shoot(deltaX, deltaY + horizontalDistance * 0.2D, deltaZ, getRankArcherVelocity(), getRankArcherInaccuracy());
+		arrow.shoot(
+				deltaX,
+				deltaY + horizontalDistance * 0.2D,
+				deltaZ,
+				resolvedVelocity,
+				getRankArcherInaccuracy()
+		);
+
 		applyInheritedProjectileEnchantments(arrow);
+		stopUsingItem();
 
 		playSound(SoundEvents.SKELETON_SHOOT, 1.0F, 1.0F / (getRandom().nextFloat() * 0.4F + 0.8F));
 		level().addFreshEntity(arrow);
@@ -2185,6 +2220,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		private int attackCooldown;
 		private int repositionCooldown;
 		private int lateralDirection;
+		private int drawTicksRemaining;
 
 		private ArcherRangedAttackGoal(CastleSoldierEntity soldier, double speedModifier, double attackRange) {
 			this.soldier = soldier;
@@ -2193,6 +2229,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			this.attackCooldown = 0;
 			this.repositionCooldown = 0;
 			this.lateralDirection = 1;
+			this.drawTicksRemaining = 0;
 			setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK));
 		}
 
@@ -2213,12 +2250,16 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			attackCooldown = 0;
 			repositionCooldown = 0;
 			lateralDirection = soldier.getRandom().nextBoolean() ? 1 : -1;
+			drawTicksRemaining = 0;
+			soldier.stopUsingItem();
 		}
 
 		@Override
 		public void stop() {
 			attackCooldown = 0;
 			repositionCooldown = 0;
+			drawTicksRemaining = 0;
+			soldier.stopUsingItem();
 			soldier.getNavigation().stop();
 		}
 
@@ -2228,15 +2269,37 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 			if (!soldier.isValidCombatTarget(target)) {
 				soldier.setTarget(null);
+				soldier.stopUsingItem();
 				soldier.getNavigation().stop();
+				drawTicksRemaining = 0;
 				return;
 			}
 
 			double distanceToTargetSqr = soldier.distanceToSqr(target);
 			double distanceToTarget = Math.sqrt(distanceToTargetSqr);
 			boolean hasLineOfSight = soldier.getSensing().hasLineOfSight(target);
+			boolean canBeginDraw = hasLineOfSight && distanceToTargetSqr <= attackRangeSqr;
 
 			soldier.getLookControl().setLookAt(target, 30.0F, 30.0F);
+
+			// Fase de puxar o arco antes do disparo.
+			if (drawTicksRemaining > 0) {
+				soldier.getNavigation().stop();
+
+				if (!canBeginDraw) {
+					drawTicksRemaining = 0;
+					soldier.stopUsingItem();
+					return;
+				}
+
+				drawTicksRemaining--;
+
+				if (drawTicksRemaining <= 0) {
+					soldier.performRangedAttack(target, soldier.getRankArcherVelocity());
+					attackCooldown = Math.max(2, soldier.getRankArcherIntervalTicks() - ARCHER_BOW_DRAW_TICKS);
+				}
+				return;
+			}
 
 			if (distanceToTarget < ARCHER_RETREAT_DISTANCE && hasLineOfSight) {
 				Vec3 retreatAnchor = soldier.getCombatKiteAnchor(target, ARCHER_COMFORT_DISTANCE, lateralDirection * ARCHER_LATERAL_OFFSET);
@@ -2261,10 +2324,15 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				attackCooldown--;
 			}
 
-			if (hasLineOfSight && distanceToTargetSqr <= attackRangeSqr && attackCooldown <= 0) {
-				// [COMBATE] velocity e intervalo escalam com o rank do soldado.
-				soldier.performRangedAttack(target, soldier.getRankArcherVelocity());
-				attackCooldown = soldier.getRankArcherIntervalTicks();
+			if (canBeginDraw && attackCooldown <= 0) {
+				if (!soldier.isUsingItem()) {
+					soldier.startUsingItem(InteractionHand.MAIN_HAND);
+				}
+
+				drawTicksRemaining = ARCHER_BOW_DRAW_TICKS;
+				soldier.getNavigation().stop();
+			} else if (soldier.isUsingItem()) {
+				soldier.stopUsingItem();
 			}
 		}
 	}
