@@ -10,6 +10,9 @@ import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.HumanoidMobRenderer;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.HumanoidArm;
+import net.minecraft.world.item.Items;
 
 public class CastleSoldierRenderer extends HumanoidMobRenderer<CastleSoldierEntity, CastleSoldierRenderState, CastleSoldierModel> {
 
@@ -29,37 +32,52 @@ public class CastleSoldierRenderer extends HumanoidMobRenderer<CastleSoldierEnti
 	}
 
 	@Override
-	public void extractRenderState(CastleSoldierEntity entity, CastleSoldierRenderState renderState, float partialTick) {
-		super.extractRenderState(entity, renderState, partialTick);
+	public void extractRenderState(CastleSoldierEntity entity, CastleSoldierRenderState state, float partialTick) {
+		super.extractRenderState(entity, state, partialTick);
 
-		renderState.soldierClass = entity.getSoldierClass();
-		applyWeaponPose(entity, renderState);
+		SoldierClass visualClass = entity.getVisualSoldierClass();
+		state.soldierClass = visualClass;
+
+		if (visualClass == SoldierClass.SWORDSMAN) {
+			state.attackTime = Math.max(state.attackTime, entity.getVisualMeleeSwingProgress(partialTick));
+			return;
+		}
+
+		if (visualClass == SoldierClass.ARCHER) {
+			state.mainArm = entity.getMainArm();
+			state.attackArm = entity.getMainArm();
+
+			state.archerCombatReadyActive =
+					entity.getTarget() != null
+							|| entity.isAggressive()
+							|| entity.isVisualArcherBowPoseActive();
+
+			state.archerBowPoseActive =
+					entity.isUsingItem()
+							&& entity.getUsedItemHand() == InteractionHand.MAIN_HAND
+							&& entity.getUseItem().is(Items.BOW);
+
+			state.isUsingItem = entity.isUsingItem();
+			state.useItemHand = entity.isUsingItem() ? entity.getUsedItemHand() : InteractionHand.MAIN_HAND;
+			state.ticksUsingItem = entity.isUsingItem() ? entity.getTicksUsingItem() : 0.0F;
+
+			// Não deixar a pose vanilla disputar com a pose manual do model.
+			state.leftArmPose = HumanoidModel.ArmPose.EMPTY;
+			state.rightArmPose = HumanoidModel.ArmPose.EMPTY;
+		}
 	}
 
-	private void applyWeaponPose(CastleSoldierEntity entity, CastleSoldierRenderState renderState) {
-		renderState.rightArmPose = HumanoidModel.ArmPose.EMPTY;
-		renderState.leftArmPose = HumanoidModel.ArmPose.EMPTY;
-
-		if (entity.getMainHandItem().isEmpty()) {
-			return;
+	@Override
+	protected HumanoidModel.ArmPose getArmPose(CastleSoldierEntity mob, HumanoidArm arm) {
+		if (mob.getVisualSoldierClass() == SoldierClass.ARCHER) {
+			return HumanoidModel.ArmPose.EMPTY;
 		}
 
-		if (entity.getSoldierClass() == SoldierClass.ARCHER) {
-			renderState.rightArmPose = entity.isUsingItem()
-					? HumanoidModel.ArmPose.BOW_AND_ARROW
-					: HumanoidModel.ArmPose.ITEM;
-			return;
-		}
-
-		renderState.rightArmPose = HumanoidModel.ArmPose.ITEM;
+		return super.getArmPose(mob, arm);
 	}
 
 	@Override
 	public Identifier getTextureLocation(CastleSoldierRenderState state) {
-		if (state.soldierClass == SoldierClass.ARCHER) {
-			return TEXTURE_ARCHER;
-		}
-
-		return TEXTURE_SWORDSMAN;
+		return state.soldierClass == SoldierClass.ARCHER ? TEXTURE_ARCHER : TEXTURE_SWORDSMAN;
 	}
 }

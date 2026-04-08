@@ -1,22 +1,4 @@
 {
-  "type": "minecraft:crafting_shapeless",
-  "category": "misc",
-  "ingredients": [
-    "kingdomsiege:castle_soldier_spawn_egg",
-    "minecraft:iron_sword",
-    "minecraft:golden_chestplate"
-  ],
-  "result": {
-    "id": "kingdomsiege:castle_soldier_spawn_egg",
-    "count": 1,
-    "components": {
-      "kingdomsiege:soldier_class": "swordsman",
-      "kingdomsiege:soldier_blueprint": {
-        "soldier_class": "swordsman",
-        "armor_tier": "gold",
-        "weapon_class": "sword",
-        "catalyst_type": "none"
-      }
-    }
-  }
+  "type": "kingdomsiege:swordsman_soldier",
+  "category": "equipment"
 }
