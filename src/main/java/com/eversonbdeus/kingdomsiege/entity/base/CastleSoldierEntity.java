@@ -16,9 +16,13 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
+import net.minecraft.util.Mth;
 import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -57,7 +61,7 @@ import net.minecraft.world.level.pathfinder.PathType;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.Vec3;
-
+import net.minecraft.world.entity.HumanoidArm;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -92,6 +96,20 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	private static final double SWORDSMAN_MELEE_SPEED = 1.15D;
 
+	// ─── Constantes de animação visual ───────────────────────────────────────
+
+	private static final int VISUAL_MELEE_SWING_DURATION_TICKS = 6;
+
+
+
+	private static final EntityDataAccessor<Integer> DATA_VISUAL_MELEE_SWING_TICKS =
+			SynchedEntityData.defineId(CastleSoldierEntity.class, EntityDataSerializers.INT);
+
+	private static final EntityDataAccessor<Boolean> DATA_VISUAL_ARCHER_BOW_POSE =
+			SynchedEntityData.defineId(CastleSoldierEntity.class, EntityDataSerializers.BOOLEAN);
+
+	private static final EntityDataAccessor<Integer> DATA_VISUAL_SOLDIER_CLASS =
+			SynchedEntityData.defineId(CastleSoldierEntity.class, EntityDataSerializers.INT);
 	// ─── Constantes de GUARD ──────────────────────────────────────────────────
 
 	private static final double GUARD_MOVE_SPEED = 1.0D;
@@ -257,6 +275,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private boolean battleRegisteredThisCombat = false;
 
 	// ─── Construtor ───────────────────────────────────────────────────────────
+	// ─── Construtor ───────────────────────────────────────────────────────────
 
 	public CastleSoldierEntity(Level level) {
 		this(ModEntities.CASTLE_SOLDIER, level);
@@ -267,6 +286,54 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		xpReward = 0;
 		configurePathfindingPreferences();
 		refreshDerivedAttributes();
+	}
+
+	@Override
+	protected void defineSynchedData(SynchedEntityData.Builder builder) {
+		super.defineSynchedData(builder);
+		builder.define(DATA_VISUAL_MELEE_SWING_TICKS, 0);
+		builder.define(DATA_VISUAL_ARCHER_BOW_POSE, false);
+		builder.define(DATA_VISUAL_SOLDIER_CLASS, SoldierClass.SWORDSMAN.ordinal());
+	}
+
+	public float getVisualMeleeSwingProgress(float partialTick) {
+		int remainingTicks = this.entityData.get(DATA_VISUAL_MELEE_SWING_TICKS);
+
+		if (remainingTicks <= 0) {
+			return 0.0F;
+		}
+
+		float elapsedTicks = VISUAL_MELEE_SWING_DURATION_TICKS
+				- Math.max(0.0F, remainingTicks - partialTick);
+
+		return Mth.clamp(
+				elapsedTicks / (float) VISUAL_MELEE_SWING_DURATION_TICKS,
+				0.0F,
+				1.0F
+		);
+	}
+
+	private void triggerVisualMeleeSwing() {
+		this.entityData.set(DATA_VISUAL_MELEE_SWING_TICKS, VISUAL_MELEE_SWING_DURATION_TICKS);
+	}
+
+	private void tickVisualAnimationSync() {
+		if (this.level().isClientSide()) {
+			return;
+		}
+
+		int remainingTicks = this.entityData.get(DATA_VISUAL_MELEE_SWING_TICKS);
+
+		if (remainingTicks > 0) {
+			this.entityData.set(DATA_VISUAL_MELEE_SWING_TICKS, remainingTicks - 1);
+		}
+	}
+	public boolean isVisualArcherBowPoseActive() {
+		return this.entityData.get(DATA_VISUAL_ARCHER_BOW_POSE);
+	}
+
+	private void setVisualArcherBowPose(boolean active) {
+		this.entityData.set(DATA_VISUAL_ARCHER_BOW_POSE, active);
 	}
 
 	// ─── Atributos estáticos ─────────────────────────────────────────────────
@@ -281,7 +348,14 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				.add(Attributes.ARMOR_TOUGHNESS, BASE_ARMOR_TOUGHNESS)
 				.add(Attributes.KNOCKBACK_RESISTANCE, BASE_KNOCKBACK_RESISTANCE);
 	}
-
+	@Override
+	public HumanoidArm getMainArm() {
+		// Convergência do arqueiro:
+		// toda a convenção visual do mod passa a usar o braço direito como
+		// braço principal para evitar conflito entre handedness, item visual
+		// e pose manual do modelo.
+		return HumanoidArm.RIGHT;
+	}
 	// ─── Navegação ────────────────────────────────────────────────────────────
 
 	@Override
@@ -308,6 +382,10 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	public void applyBlueprint(SoldierBlueprintData blueprint) {
 		soldierBlueprint = blueprint != null ? blueprint : SoldierBlueprintData.defaultRecruit();
+
+		// Sincroniza a classe real do soldado para o client.
+		this.entityData.set(DATA_VISUAL_SOLDIER_CLASS, soldierBlueprint.soldierClass().ordinal());
+
 		refreshDerivedAttributes();
 	}
 
@@ -351,6 +429,16 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	public SoldierClass getSoldierClass() {
 		return soldierBlueprint.soldierClass();
+	}
+	public SoldierClass getVisualSoldierClass() {
+		int ordinal = this.entityData.get(DATA_VISUAL_SOLDIER_CLASS);
+		SoldierClass[] values = SoldierClass.values();
+
+		if (ordinal < 0 || ordinal >= values.length) {
+			return SoldierClass.SWORDSMAN;
+		}
+
+		return values[ordinal];
 	}
 
 	public void setSoldierClass(SoldierClass soldierClass) {
@@ -599,21 +687,20 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	// ─── Tick principal ───────────────────────────────────────────────────────
 
+// ─── Tick principal ───────────────────────────────────────────────────────
+
 	@Override
 	public void tick() {
-		super.tick();
+		super.tick(); // O super já cuida da animação e relógios base!
 
-		if (!level().isClientSide()) {
-			if (allyCallCooldown > 0) {
-				allyCallCooldown--;
-			}
-
-			updateFollowOwnerMotionState();
-			validateOwnerState();
-			validateCurrentTarget();
-			tickAdvancedMovementSupport();
-			tickMeleeCriticalJumpSupport();
-			tickSlowRegeneration();
+		if (!this.level().isClientSide()) {
+			this.tickVisualAnimationSync();
+			this.updateFollowOwnerMotionState();
+			this.tickAdvancedMovementSupport();
+			this.tickMeleeCriticalJumpSupport();
+			this.validateOwnerState();
+			this.validateCurrentTarget();
+			this.tickSlowRegeneration();
 		}
 	}
 
@@ -715,11 +802,12 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	}
 
 	// ─── Dano causado ────────────────────────────────────────────────────────
-
 	@Override
 	public boolean doHurtTarget(ServerLevel serverLevel, Entity target) {
-		// Garante o swing visual da arma na mão.
-		swing(InteractionHand.MAIN_HAND);
+		// Força o swing vanilla e também um timer visual próprio,
+		// para o client não depender só da sincronização curta do attackTime.
+		triggerVisualMeleeSwing();
+		swing(InteractionHand.MAIN_HAND, true);
 
 		boolean damaged = super.doHurtTarget(serverLevel, target);
 
@@ -1268,6 +1356,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	private void clearCurrentTarget() {
 		setTarget(null);
+		setVisualArcherBowPose(false);
 		getNavigation().stop();
 	}
 
@@ -1405,7 +1494,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	}
 
 	private void refreshVisualWeapon() {
-		ItemStack mainHandStack = soldierBlueprint.weaponStack().isEmpty()
+		ItemStack visualWeaponStack = soldierBlueprint.weaponStack().isEmpty()
 				? switch (getWeaponClass()) {
 			case BOW -> new ItemStack(Items.BOW);
 			case SWORD -> new ItemStack(Items.IRON_SWORD);
@@ -1413,16 +1502,21 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 				: soldierBlueprint.weaponStack().copy();
 
-		if (!mainHandStack.isEmpty()) {
-			mainHandStack.setCount(1);
+		if (!visualWeaponStack.isEmpty()) {
+			visualWeaponStack.setCount(1);
 		}
 
-		setItemSlot(EquipmentSlot.MAINHAND, mainHandStack);
+		// Convergência do arqueiro:
+		// o arco visual volta para a mão principal. A pose especial fica no model,
+		// sem depender de offhand para "forçar" a animação.
+		setItemSlot(EquipmentSlot.MAINHAND, visualWeaponStack);
+		setItemSlot(EquipmentSlot.OFFHAND, ItemStack.EMPTY);
 
 		// Peitoral interno — defesa via blueprint, não armadura visual.
 		setItemSlot(EquipmentSlot.CHEST, ItemStack.EMPTY);
 
 		setDropChance(EquipmentSlot.MAINHAND, 0.0F);
+		setDropChance(EquipmentSlot.OFFHAND, 0.0F);
 		setDropChance(EquipmentSlot.CHEST, 0.0F);
 	}
 
@@ -2098,15 +2192,9 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 	}
 
-	// ─── Melee do espadachim ──────────────────────────────────────────────────
-
+	// ─── Espadachim: Ataque Corpo a Corpo ─────────────────────────────────────
 	private static final class SwordsmanMeleeAttackGoal extends MeleeAttackGoal {
 		private final CastleSoldierEntity soldier;
-
-		// [COMBATE] Contador de ticks em que o alvo está colado sem receber golpe.
-		// Aranha, creeper e mobs rasteiros podem ficar presos no hitbox do soldado,
-		// fazendo o MeleeAttackGoal parar de atacar. Após 20 ticks sem golpe com
-		// o alvo a ≤ 2 blocos, um ataque forçado é executado diretamente.
 		private int stuckAttackTicks = 0;
 
 		private SwordsmanMeleeAttackGoal(CastleSoldierEntity soldier, double speedModifier, boolean followingTargetEvenIfNotSeen) {
@@ -2138,7 +2226,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		@Override
 		public void tick() {
-			super.tick();
+			super.tick(); // O super já cuida de mover e atacar perfeitamente!
 
 			LivingEntity target = soldier.getTarget();
 			if (target == null || !target.isAlive()) {
@@ -2146,15 +2234,10 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				return;
 			}
 
-			// [COMBATE] Perseguição mais rápida conforme o rank sobe.
-			double rankSpeed = SWORDSMAN_MELEE_SPEED * soldier.getRankSwordChaseSpeed();
-			soldier.getNavigation().moveTo(target, rankSpeed);
-
 			double distSqr = soldier.distanceToSqr(target);
 
 			// [COMBATE BUG-FIX] Alvo colado ao soldado (≤ 2 blocos):
-			// conta ticks sem golpe e força o ataque após 20 ticks (1 segundo).
-			// Cobre o caso da aranha rastejando sob o hitbox e outros mobs presos.
+			// conta ticks sem golpe e força o ataque após 20 ticks.
 			if (distSqr < 4.0D) {
 				stuckAttackTicks++;
 				if (stuckAttackTicks >= 20 && !soldier.level().isClientSide()) {
@@ -2168,7 +2251,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			}
 		}
 	}
-
 	// ─── Alvo hostil do espadachim ────────────────────────────────────────────
 
 	private static final class SwordsmanNearestHostileTargetGoal extends NearestAttackableTargetGoal<Mob> {
@@ -2211,8 +2293,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 	}
 
-	// ─── Goal ranged do arqueiro ──────────────────────────────────────────────
-
+	// ─── Arqueiro: Ataque à Distância ─────────────────────────────────────────
 	private static final class ArcherRangedAttackGoal extends Goal {
 		private final CastleSoldierEntity soldier;
 		private final double speedModifier;
@@ -2252,6 +2333,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			lateralDirection = soldier.getRandom().nextBoolean() ? 1 : -1;
 			drawTicksRemaining = 0;
 			soldier.stopUsingItem();
+			soldier.setAggressive(true);
+			soldier.setVisualArcherBowPose(true);
 		}
 
 		@Override
@@ -2261,6 +2344,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			drawTicksRemaining = 0;
 			soldier.stopUsingItem();
 			soldier.getNavigation().stop();
+			soldier.setAggressive(false);
+			soldier.setVisualArcherBowPose(false);
 		}
 
 		@Override
@@ -2271,9 +2356,13 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				soldier.setTarget(null);
 				soldier.stopUsingItem();
 				soldier.getNavigation().stop();
+				soldier.setVisualArcherBowPose(false);
 				drawTicksRemaining = 0;
 				return;
 			}
+
+			// Mantém a pose visual ativa durante o combate.
+			soldier.setVisualArcherBowPose(true);
 
 			double distanceToTargetSqr = soldier.distanceToSqr(target);
 			double distanceToTarget = Math.sqrt(distanceToTargetSqr);
@@ -2282,7 +2371,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 			soldier.getLookControl().setLookAt(target, 30.0F, 30.0F);
 
-			// Fase de puxar o arco antes do disparo.
 			if (drawTicksRemaining > 0) {
 				soldier.getNavigation().stop();
 
@@ -2302,7 +2390,11 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			}
 
 			if (distanceToTarget < ARCHER_RETREAT_DISTANCE && hasLineOfSight) {
-				Vec3 retreatAnchor = soldier.getCombatKiteAnchor(target, ARCHER_COMFORT_DISTANCE, lateralDirection * ARCHER_LATERAL_OFFSET);
+				Vec3 retreatAnchor = soldier.getCombatKiteAnchor(
+						target,
+						ARCHER_COMFORT_DISTANCE,
+						lateralDirection * ARCHER_LATERAL_OFFSET
+				);
 				soldier.getNavigation().moveTo(retreatAnchor.x, retreatAnchor.y, retreatAnchor.z, speedModifier);
 				repositionCooldown = ARCHER_REPOSITION_INTERVAL_TICKS;
 			} else if (distanceToTargetSqr > attackRangeSqr || !hasLineOfSight) {
@@ -2315,8 +2407,17 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				if (--repositionCooldown <= 0) {
 					repositionCooldown = ARCHER_REPOSITION_INTERVAL_TICKS;
 					lateralDirection = soldier.getRandom().nextBoolean() ? 1 : -1;
-					Vec3 repositionAnchor = soldier.getCombatKiteAnchor(target, ARCHER_COMFORT_DISTANCE, lateralDirection * ARCHER_LATERAL_OFFSET);
-					soldier.getNavigation().moveTo(repositionAnchor.x, repositionAnchor.y, repositionAnchor.z, speedModifier * 0.9D);
+					Vec3 repositionAnchor = soldier.getCombatKiteAnchor(
+							target,
+							ARCHER_COMFORT_DISTANCE,
+							lateralDirection * ARCHER_LATERAL_OFFSET
+					);
+					soldier.getNavigation().moveTo(
+							repositionAnchor.x,
+							repositionAnchor.y,
+							repositionAnchor.z,
+							speedModifier * 0.9D
+					);
 				}
 			}
 
@@ -2336,7 +2437,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			}
 		}
 	}
-
 	// ─── Retorno ao posto (GUARD) ─────────────────────────────────────────────
 
 	private static final class ReturnToHomePosGoal extends Goal {
