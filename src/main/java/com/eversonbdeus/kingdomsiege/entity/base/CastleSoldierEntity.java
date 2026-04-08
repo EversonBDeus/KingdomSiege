@@ -95,6 +95,16 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	// ─── Constantes de combate ────────────────────────────────────────────────
 
 	private static final double SWORDSMAN_MELEE_SPEED = 1.15D;
+	private static final double COMBAT_THREAT_SCAN_RANGE = 18.0D;
+	private static final double COMBAT_THREAT_SCAN_RANGE_SQR = COMBAT_THREAT_SCAN_RANGE * COMBAT_THREAT_SCAN_RANGE;
+	private static final double COMBAT_SWITCH_MARGIN = 4.0D;
+	private static final double COMBAT_FACE_MAX_ANGLE = 70.0D;
+	private static final double LOW_HEALTH_RETREAT_THRESHOLD = 0.35D;
+	private static final double CRITICAL_HEALTH_RETREAT_THRESHOLD = 0.20D;
+	private static final double RETREAT_TRIGGER_DISTANCE = 9.0D;
+	private static final double RETREAT_TRIGGER_DISTANCE_SQR = RETREAT_TRIGGER_DISTANCE * RETREAT_TRIGGER_DISTANCE;
+	private static final double RETREAT_MOVE_SPEED = 1.28D;
+
 
 	// ─── Constantes de animação visual ───────────────────────────────────────
 
@@ -268,6 +278,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	// Cooldown para chamada de aliados — evita chamar toda hora.
 	private int allyCallCooldown = 0;
+	private int retreatTicks = 0;
 
 	// [FASE 6] Contadores de regeneração e combate recente.
 	private int regenTickCounter = 0;
@@ -697,6 +708,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			this.tickVisualAnimationSync();
 			this.updateFollowOwnerMotionState();
 			this.tickAdvancedMovementSupport();
+			this.tickCombatCoordination();
 			this.tickMeleeCriticalJumpSupport();
 			this.validateOwnerState();
 			this.validateCurrentTarget();
@@ -724,10 +736,17 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				setSoldierIdentity(soldierIdentity.withBattle());
 			}
 
-			// Em GUARD, com vida baixa e vários inimigos, chama aliado próximo.
-			if (isGuardMode()) {
-				tryCallForAllyHelp(level);
+			LivingEntity attacker = source.getEntity() instanceof LivingEntity livingAttacker
+					&& isValidCombatTarget(livingAttacker)
+					? livingAttacker
+					: null;
+
+			if (attacker != null) {
+				setTarget(attacker);
+				encourageThreatToAttackSoldier(attacker);
 			}
+
+			tryCallForAllyHelp(level);
 		}
 
 		return damaged;
@@ -985,9 +1004,222 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return false;
 	}
 
-	// ─── Validação de estado ──────────────────────────────────────────────────
+// ─── Coordenação de combate ───────────────────────────────────────────────
+
+	private void tickCombatCoordination() {
+		if (allyCallCooldown > 0) {
+			allyCallCooldown--;
+		}
+
+		if (retreatTicks > 0) {
+			retreatTicks--;
+		}
+
+		LivingEntity priorityThreat = findPriorityCombatThreat();
+
+		if (!isValidCombatTarget(priorityThreat)) {
+			return;
+		}
+
+		if (shouldSwitchTargetTo(priorityThreat)) {
+			setTarget(priorityThreat);
+		}
+
+		encourageThreatToAttackSoldier(priorityThreat);
+
+		if (shouldRetreatFromThreat(priorityThreat)) {
+			retreatTicks = 10;
+			navigateAwayFromThreat(priorityThreat);
+			if (level() instanceof ServerLevel serverLevel) {
+				tryCallForAllyHelp(serverLevel);
+			}
+		}
+	}
+
+	private LivingEntity findPriorityCombatThreat() {
+		if (!(level() instanceof ServerLevel serverLevel)) {
+			return getTarget();
+		}
+
+		Player owner = getValidOwnerPlayer();
+		List<Mob> nearbyHostiles = serverLevel.getEntitiesOfClass(
+				Mob.class,
+				getBoundingBox().inflate(COMBAT_THREAT_SCAN_RANGE),
+				e -> e instanceof Enemy && isValidCombatTarget(e)
+		);
+
+		if (nearbyHostiles.isEmpty()) {
+			return getTarget();
+		}
+
+		LivingEntity bestThreat = null;
+		double bestScore = Double.MAX_VALUE;
+
+		for (Mob hostile : nearbyHostiles) {
+			double score = computeThreatScore(hostile, owner);
+			if (score < bestScore) {
+				bestScore = score;
+				bestThreat = hostile;
+			}
+		}
+
+		return bestThreat;
+	}
+
+	private double computeThreatScore(LivingEntity threat, Player owner) {
+		double score = distanceToSqr(threat);
+
+		if (threat instanceof Mob hostile) {
+			LivingEntity hostileTarget = hostile.getTarget();
+
+			if (hostileTarget == this) {
+				score -= 16.0D;
+			}
+
+			if (owner != null && hostileTarget == owner) {
+				score -= 12.0D;
+			}
+		}
+
+		if (getTarget() == threat) {
+			score -= 4.0D;
+		}
+
+		return score;
+	}
+
+	private boolean shouldSwitchTargetTo(LivingEntity candidate) {
+		if (!isValidCombatTarget(candidate)) {
+			return false;
+		}
+
+		LivingEntity currentTarget = getTarget();
+		if (!isValidCombatTarget(currentTarget)) {
+			return true;
+		}
+
+		if (currentTarget == candidate) {
+			return false;
+		}
+
+		Player owner = getValidOwnerPlayer();
+		double candidateScore = computeThreatScore(candidate, owner);
+		double currentScore = computeThreatScore(currentTarget, owner);
+		return candidateScore + COMBAT_SWITCH_MARGIN < currentScore;
+	}
+
+	private void encourageThreatToAttackSoldier(LivingEntity threat) {
+		if (!(threat instanceof Mob hostile) || !threat.isAlive()) {
+			return;
+		}
+
+		LivingEntity hostileTarget = hostile.getTarget();
+		Player owner = getValidOwnerPlayer();
+
+		if (hostileTarget == null || hostileTarget == owner || hostileTarget == this) {
+			hostile.setTarget(this);
+		}
+	}
+
+	private boolean shouldRetreatFromThreat(LivingEntity threat) {
+		if (!isValidCombatTarget(threat)) {
+			return false;
+		}
+
+		double healthRatio = getHealth() / Math.max(1.0F, getMaxHealth());
+		if (healthRatio > LOW_HEALTH_RETREAT_THRESHOLD) {
+			return false;
+		}
+
+		int nearbyEnemies = countNearbyHostiles(COMBAT_THREAT_SCAN_RANGE);
+		if (healthRatio <= CRITICAL_HEALTH_RETREAT_THRESHOLD) {
+			return nearbyEnemies >= 1;
+		}
+
+		return nearbyEnemies >= 2 || distanceToSqr(threat) <= RETREAT_TRIGGER_DISTANCE_SQR;
+	}
+
+	private int countNearbyHostiles(double range) {
+		if (!(level() instanceof ServerLevel serverLevel)) {
+			return 0;
+		}
+
+		return serverLevel.getEntitiesOfClass(
+				Mob.class,
+				getBoundingBox().inflate(range),
+				e -> e instanceof Enemy && isValidCombatTarget(e)
+		).size();
+	}
+
+	private boolean isRetreatingFromThreat() {
+		LivingEntity currentTarget = getTarget();
+		return retreatTicks > 0 && isValidCombatTarget(currentTarget) && shouldRetreatFromThreat(currentTarget);
+	}
+
+	private void navigateAwayFromThreat(LivingEntity threat) {
+		Vec3 awayDirection = position().subtract(threat.position());
+		awayDirection = new Vec3(awayDirection.x, 0.0D, awayDirection.z);
+
+		if (awayDirection.lengthSqr() < 1.0E-4D) {
+			awayDirection = new Vec3(0.0D, 0.0D, 1.0D);
+		} else {
+			awayDirection = awayDirection.normalize();
+		}
+
+		double retreatDistance = canUseBowCombat() ? ARCHER_COMFORT_DISTANCE + 3.0D : 6.5D;
+		Vec3 retreatAnchor = clampToGuardArea(position().add(awayDirection.scale(retreatDistance)));
+
+		faceTargetHard(threat, 30.0F);
+		getLookControl().setLookAt(threat, 30.0F, 30.0F);
+		getNavigation().moveTo(retreatAnchor.x, retreatAnchor.y, retreatAnchor.z, RETREAT_MOVE_SPEED);
+		stopUsingItem();
+		setVisualArcherBowPose(false);
+	}
+
+	private void faceTargetHard(LivingEntity target, float maxTurnDegrees) {
+		if (target == null) {
+			return;
+		}
+
+		double deltaX = target.getX() - getX();
+		double deltaZ = target.getZ() - getZ();
+		if (deltaX * deltaX + deltaZ * deltaZ < 1.0E-4D) {
+			return;
+		}
+
+		float desiredYaw = (float) (Mth.atan2(deltaZ, deltaX) * (180.0D / Math.PI)) - 90.0F;
+		float yawDelta = Mth.wrapDegrees(desiredYaw - getYRot());
+		setYRot(getYRot() + Mth.clamp(yawDelta, -maxTurnDegrees, maxTurnDegrees));
+	}
+
+	private boolean isFacingTarget(LivingEntity target, double maxAngleDegrees) {
+		if (target == null) {
+			return false;
+		}
+
+		Vec3 toTarget = target.position().subtract(position());
+		toTarget = new Vec3(toTarget.x, 0.0D, toTarget.z);
+		if (toTarget.lengthSqr() < 1.0E-4D) {
+			return true;
+		}
+
+		toTarget = toTarget.normalize();
+		Vec3 lookDirection = getLookAngle();
+		lookDirection = new Vec3(lookDirection.x, 0.0D, lookDirection.z);
+		if (lookDirection.lengthSqr() < 1.0E-4D) {
+			return true;
+		}
+
+		lookDirection = lookDirection.normalize();
+		double dot = Mth.clamp(lookDirection.dot(toTarget), -1.0D, 1.0D);
+		double angle = Math.toDegrees(Math.acos(dot));
+		return angle <= maxAngleDegrees;
+	}
+
+// ─── Validação de estado ──────────────────────────────────────────────────
 
 	private void validateOwnerState() {
+
 		if (!isFollowMode()) {
 			return;
 		}
@@ -2027,6 +2259,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			return;
 		}
 
+		faceTargetHard(target, 45.0F);
+
 		ItemStack arrowStack = new ItemStack(Items.ARROW);
 		ItemStack weaponStack = soldierBlueprint.weaponStack().isEmpty()
 				? new ItemStack(Items.BOW)
@@ -2204,12 +2438,16 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		@Override
 		public boolean canUse() {
-			return soldier.canUseSwordCombat() && super.canUse();
+			return soldier.canUseSwordCombat()
+					&& !soldier.isRetreatingFromThreat()
+					&& super.canUse();
 		}
 
 		@Override
 		public boolean canContinueToUse() {
-			return soldier.canUseSwordCombat() && super.canContinueToUse();
+			return soldier.canUseSwordCombat()
+					&& !soldier.isRetreatingFromThreat()
+					&& super.canContinueToUse();
 		}
 
 		@Override
@@ -2234,13 +2472,18 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				return;
 			}
 
+			soldier.faceTargetHard(target, 35.0F);
+			soldier.getLookControl().setLookAt(target, 30.0F, 30.0F);
+
 			double distSqr = soldier.distanceToSqr(target);
 
 			// [COMBATE BUG-FIX] Alvo colado ao soldado (≤ 2 blocos):
-			// conta ticks sem golpe e força o ataque após 20 ticks.
+			// só força o hit quando o soldado está realmente encarando o alvo.
 			if (distSqr < 4.0D) {
 				stuckAttackTicks++;
-				if (stuckAttackTicks >= 20 && !soldier.level().isClientSide()) {
+				if (stuckAttackTicks >= 20
+						&& !soldier.level().isClientSide()
+						&& soldier.isFacingTarget(target, COMBAT_FACE_MAX_ANGLE)) {
 					if (soldier.level() instanceof net.minecraft.server.level.ServerLevel serverLevel) {
 						soldier.doHurtTarget(serverLevel, target);
 					}
@@ -2317,13 +2560,19 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		@Override
 		public boolean canUse() {
 			LivingEntity target = soldier.getTarget();
-			return soldier.canUseBowCombat() && target != null && target.isAlive();
+			return soldier.canUseBowCombat()
+					&& target != null
+					&& target.isAlive()
+					&& !soldier.isRetreatingFromThreat();
 		}
 
 		@Override
 		public boolean canContinueToUse() {
 			LivingEntity target = soldier.getTarget();
-			return soldier.canUseBowCombat() && target != null && target.isAlive();
+			return soldier.canUseBowCombat()
+					&& target != null
+					&& target.isAlive()
+					&& !soldier.isRetreatingFromThreat();
 		}
 
 		@Override
@@ -2361,15 +2610,24 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				return;
 			}
 
+			if (soldier.isRetreatingFromThreat()) {
+				soldier.navigateAwayFromThreat(target);
+				soldier.stopUsingItem();
+				soldier.setVisualArcherBowPose(false);
+				drawTicksRemaining = 0;
+				return;
+			}
+
 			// Mantém a pose visual ativa durante o combate.
 			soldier.setVisualArcherBowPose(true);
 
 			double distanceToTargetSqr = soldier.distanceToSqr(target);
 			double distanceToTarget = Math.sqrt(distanceToTargetSqr);
 			boolean hasLineOfSight = soldier.getSensing().hasLineOfSight(target);
-			boolean canBeginDraw = hasLineOfSight && distanceToTargetSqr <= attackRangeSqr;
-
+			soldier.faceTargetHard(target, 24.0F);
 			soldier.getLookControl().setLookAt(target, 30.0F, 30.0F);
+			boolean facingTarget = soldier.isFacingTarget(target, COMBAT_FACE_MAX_ANGLE);
+			boolean canBeginDraw = hasLineOfSight && distanceToTargetSqr <= attackRangeSqr && facingTarget;
 
 			if (drawTicksRemaining > 0) {
 				soldier.getNavigation().stop();
