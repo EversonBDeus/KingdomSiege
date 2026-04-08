@@ -1,3 +1,4 @@
+
 package com.eversonbdeus.kingdomsiege.entity;
 
 import com.eversonbdeus.kingdomsiege.registry.ModEntities;
@@ -46,6 +47,7 @@ import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.ai.navigation.GroundPathNavigation;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.entity.monster.Enemy;
+
 import net.minecraft.world.entity.monster.RangedAttackMob;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.Projectile;
@@ -158,6 +160,12 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final int ARCHER_ATTACK_INTERVAL_TICKS = 30;
 	private static final float ARCHER_PROJECTILE_VELOCITY = 1.6F;
 	private static final int ARCHER_BOW_DRAW_TICKS = 12;
+	private static final int ARCHER_STABLE_SIGHT_TICKS = 5;
+	private static final int ARCHER_CLOSE_STABLE_SIGHT_TICKS = 2;
+	private static final double ARCHER_MIN_DRAW_DISTANCE = 2.25D;
+	private static final double ARCHER_SPIDER_MIN_DRAW_DISTANCE = 3.10D;
+	private static final double ARCHER_CLOSE_REACTION_DISTANCE = 2.90D;
+	private static final double ARCHER_SPIDER_CLOSE_REACTION_DISTANCE = 3.60D;
 	private static final double ARCHER_PROJECTILE_FORWARD_OFFSET = 0.55D;
 	private static final double ARCHER_PROJECTILE_SIDE_OFFSET = 0.28D;
 	private static final double ARCHER_PROJECTILE_HEIGHT_OFFSET = 0.18D;
@@ -177,7 +185,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	// ─── Constantes de proteção ao dono ──────────────────────────────────────
 
 	private static final double OWNER_PROTECT_RANGE = 16.0D;
-	private static final double OWNER_PROTECT_RANGE_SQR = OWNER_PROTECT_RANGE * OWNER_PROTECT_RANGE;
+	static final double OWNER_PROTECT_RANGE_SQR = OWNER_PROTECT_RANGE * OWNER_PROTECT_RANGE;
 
 	// ─── Constantes de FOLLOW ─────────────────────────────────────────────────
 
@@ -186,7 +194,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final double FOLLOW_DESIRED_DISTANCE = 4.0D;
 	private static final double FOLLOW_MOVE_SPEED = 1.15D;
 	private static final double FOLLOW_REJOIN_DISTANCE = 24.0D;
-	private static final double FOLLOW_REJOIN_DISTANCE_SQR = FOLLOW_REJOIN_DISTANCE * FOLLOW_REJOIN_DISTANCE;
+	static final double FOLLOW_REJOIN_DISTANCE_SQR = FOLLOW_REJOIN_DISTANCE * FOLLOW_REJOIN_DISTANCE;
 
 	// Espera 4 segundos parado antes de começar a vagar.
 	private static final int FOLLOW_OWNER_STATIONARY_TICKS = 80;
@@ -206,15 +214,15 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	private static final double FOLLOW_ROAM_MAX_RADIUS = 5.5D;
 
 	// Recalcula destino de vagar a cada 80 ticks (4 s) no máximo.
-	private static final int FOLLOW_ROAM_RECALCULATE_TICKS = 80;
+	static final int FOLLOW_ROAM_RECALCULATE_TICKS = 80;
 
 	// [FASE 4] Repouso de 3–6 s após chegar ao ponto de vagar, antes de escolher o próximo.
-	private static final int FOLLOW_ROAM_REST_MIN_TICKS = 60;
-	private static final int FOLLOW_ROAM_REST_MAX_TICKS = 120;
+	static final int FOLLOW_ROAM_REST_MIN_TICKS = 60;
+	static final int FOLLOW_ROAM_REST_MAX_TICKS = 120;
 
 	// [FASE 4] Threshold de "chegou ao ponto de vagar": 4 blocos² (= 2 blocos).
 	// Valor maior que o antigo (2.0) evita que o soldado oscile sem registrar chegada.
-	private static final double FOLLOW_ROAM_ARRIVAL_THRESHOLD_SQR = 4.0D;
+	static final double FOLLOW_ROAM_ARRIVAL_THRESHOLD_SQR = 4.0D;
 
 	// ─── [FASE 6] Regeneração lenta ─────────────────────────────────────────
 
@@ -1346,7 +1354,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	// ─── Posicionamento de FOLLOW ─────────────────────────────────────────────
 
-	private Vec3 getFollowAnchor(Player owner) {
+	Vec3 getFollowAnchor(Player owner) {
 		Vec3 lookDirection = owner.getLookAngle();
 		Vec3 horizontalLookDirection = new Vec3(lookDirection.x, 0.0D, lookDirection.z);
 
@@ -1359,7 +1367,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return owner.position().subtract(horizontalLookDirection.scale(FOLLOW_DESIRED_DISTANCE));
 	}
 
-	private Vec3 getFollowRoamAnchor(Player owner) {
+	Vec3 getFollowRoamAnchor(Player owner) {
 		Vec3 ownerPosition = owner.position();
 
 		// Tenta 8 vezes encontrar posição diferente da atual.
@@ -1380,11 +1388,11 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	// ─── Estado de movimento do dono ──────────────────────────────────────────
 
-	private boolean hasOwnerBeenStillLongEnough() {
+	boolean hasOwnerBeenStillLongEnough() {
 		return ownerStillTicks >= FOLLOW_OWNER_STATIONARY_TICKS;
 	}
 
-	private boolean shouldRoamAroundStoppedOwner(Player owner) {
+	boolean shouldRoamAroundStoppedOwner(Player owner) {
 		return isFollowMode()
 				&& getTarget() == null
 				&& owner != null
@@ -1638,7 +1646,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		));
 	}
 
-	private Player getValidOwnerPlayer() {
+	Player getValidOwnerPlayer() {
 		Player owner = getOwnerPlayer();
 
 		if (owner == null || !owner.isAlive() || owner.isRemoved() || owner.isSpectator()) {
@@ -1648,7 +1656,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return owner;
 	}
 
-	private boolean isValidCombatTarget(LivingEntity target) {
+	boolean isValidCombatTarget(LivingEntity target) {
 		if (target == null || !target.isAlive()) {
 			return false;
 		}
@@ -2298,134 +2306,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	// Goals internos
 	// ═════════════════════════════════════════════════════════════════════════
 
-	// ─── Proteger dono quando atacado ────────────────────────────────────────
-
-	private static final class ProtectOwnerWhenHurtGoal extends Goal {
-		private final CastleSoldierEntity soldier;
-		private LivingEntity ownerAttacker;
-		private int lastOwnerAttackedTime;
-
-		private ProtectOwnerWhenHurtGoal(CastleSoldierEntity soldier) {
-			this.soldier = soldier;
-			this.lastOwnerAttackedTime = 0;
-			setFlags(EnumSet.of(Goal.Flag.TARGET));
-		}
-
-		@Override
-		public boolean canUse() {
-			Player owner = soldier.getValidOwnerPlayer();
-
-			if (owner == null) {
-				return false;
-			}
-
-			if (soldier.distanceToSqr(owner) > OWNER_PROTECT_RANGE_SQR) {
-				return false;
-			}
-
-			LivingEntity attacker = owner.getLastHurtByMob();
-			int attackedTime = owner.getLastHurtByMobTimestamp();
-
-			if (attackedTime == lastOwnerAttackedTime) {
-				return false;
-			}
-
-			if (!soldier.isValidCombatTarget(attacker)) {
-				return false;
-			}
-
-			ownerAttacker = attacker;
-			return true;
-		}
-
-		@Override
-		public boolean canContinueToUse() {
-			return false;
-		}
-
-		@Override
-		public void start() {
-			Player owner = soldier.getValidOwnerPlayer();
-
-			if (owner != null && ownerAttacker != null) {
-				lastOwnerAttackedTime = owner.getLastHurtByMobTimestamp();
-				soldier.setTarget(ownerAttacker);
-			}
-
-			super.start();
-		}
-
-		@Override
-		public void stop() {
-			ownerAttacker = null;
-			super.stop();
-		}
-	}
-
-	// ─── Assistir alvo atacado pelo dono ─────────────────────────────────────
-
-	private static final class AssistOwnerAttackTargetGoal extends Goal {
-		private final CastleSoldierEntity soldier;
-		private LivingEntity ownerTarget;
-		private int lastOwnerAttackTime;
-
-		private AssistOwnerAttackTargetGoal(CastleSoldierEntity soldier) {
-			this.soldier = soldier;
-			this.lastOwnerAttackTime = 0;
-			setFlags(EnumSet.of(Goal.Flag.TARGET));
-		}
-
-		@Override
-		public boolean canUse() {
-			Player owner = soldier.getValidOwnerPlayer();
-
-			if (owner == null) {
-				return false;
-			}
-
-			if (soldier.distanceToSqr(owner) > OWNER_PROTECT_RANGE_SQR) {
-				return false;
-			}
-
-			LivingEntity target = owner.getLastHurtMob();
-			int attackTime = owner.getLastHurtMobTimestamp();
-
-			if (attackTime == lastOwnerAttackTime) {
-				return false;
-			}
-
-			if (!soldier.isValidCombatTarget(target)) {
-				return false;
-			}
-
-			ownerTarget = target;
-			return true;
-		}
-
-		@Override
-		public boolean canContinueToUse() {
-			return false;
-		}
-
-		@Override
-		public void start() {
-			Player owner = soldier.getValidOwnerPlayer();
-
-			if (owner != null && ownerTarget != null) {
-				lastOwnerAttackTime = owner.getLastHurtMobTimestamp();
-				soldier.setTarget(ownerTarget);
-			}
-
-			super.start();
-		}
-
-		@Override
-		public void stop() {
-			ownerTarget = null;
-			super.stop();
-		}
-	}
-
 	// ─── Espadachim: Ataque Corpo a Corpo ─────────────────────────────────────
 	private static final class SwordsmanMeleeAttackGoal extends MeleeAttackGoal {
 		private final CastleSoldierEntity soldier;
@@ -2545,6 +2425,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		private int repositionCooldown;
 		private int lateralDirection;
 		private int drawTicksRemaining;
+		private int stableSightTicks;
 
 		private ArcherRangedAttackGoal(CastleSoldierEntity soldier, double speedModifier, double attackRange) {
 			this.soldier = soldier;
@@ -2581,6 +2462,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			repositionCooldown = 0;
 			lateralDirection = soldier.getRandom().nextBoolean() ? 1 : -1;
 			drawTicksRemaining = 0;
+			stableSightTicks = 0;
 			soldier.stopUsingItem();
 			soldier.setAggressive(true);
 			soldier.setVisualArcherBowPose(true);
@@ -2591,6 +2473,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			attackCooldown = 0;
 			repositionCooldown = 0;
 			drawTicksRemaining = 0;
+			stableSightTicks = 0;
 			soldier.stopUsingItem();
 			soldier.getNavigation().stop();
 			soldier.setAggressive(false);
@@ -2607,27 +2490,42 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				soldier.getNavigation().stop();
 				soldier.setVisualArcherBowPose(false);
 				drawTicksRemaining = 0;
+				stableSightTicks = 0;
 				return;
 			}
 
-			if (soldier.isRetreatingFromThreat()) {
-				soldier.navigateAwayFromThreat(target);
-				soldier.stopUsingItem();
-				soldier.setVisualArcherBowPose(false);
-				drawTicksRemaining = 0;
-				return;
-			}
-
-			// Mantém a pose visual ativa durante o combate.
 			soldier.setVisualArcherBowPose(true);
 
 			double distanceToTargetSqr = soldier.distanceToSqr(target);
 			double distanceToTarget = Math.sqrt(distanceToTargetSqr);
 			boolean hasLineOfSight = soldier.getSensing().hasLineOfSight(target);
-			soldier.faceTargetHard(target, 24.0F);
+			boolean isSpiderTarget = target.getType() == EntityType.SPIDER
+					|| target.getType() == EntityType.CAVE_SPIDER;
+
+			double closeReactionDistance = isSpiderTarget
+					? ARCHER_SPIDER_CLOSE_REACTION_DISTANCE
+					: ARCHER_CLOSE_REACTION_DISTANCE;
+
+			double minDrawDistance = isSpiderTarget
+					? ARCHER_SPIDER_MIN_DRAW_DISTANCE
+					: ARCHER_MIN_DRAW_DISTANCE;
+
+			if (hasLineOfSight) {
+				stableSightTicks++;
+			} else {
+				stableSightTicks = 0;
+			}
+
+			int requiredStableSightTicks = distanceToTarget <= closeReactionDistance
+					? ARCHER_CLOSE_STABLE_SIGHT_TICKS
+					: ARCHER_STABLE_SIGHT_TICKS;
+
+			boolean canBeginDraw = hasLineOfSight
+					&& distanceToTargetSqr <= attackRangeSqr
+					&& distanceToTarget > minDrawDistance
+					&& stableSightTicks >= requiredStableSightTicks;
+
 			soldier.getLookControl().setLookAt(target, 30.0F, 30.0F);
-			boolean facingTarget = soldier.isFacingTarget(target, COMBAT_FACE_MAX_ANGLE);
-			boolean canBeginDraw = hasLineOfSight && distanceToTargetSqr <= attackRangeSqr && facingTarget;
 
 			if (drawTicksRemaining > 0) {
 				soldier.getNavigation().stop();
@@ -2642,24 +2540,29 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 				if (drawTicksRemaining <= 0) {
 					soldier.performRangedAttack(target, soldier.getRankArcherVelocity());
-					attackCooldown = Math.max(2, soldier.getRankArcherIntervalTicks() - ARCHER_BOW_DRAW_TICKS);
+					attackCooldown = Math.max(4, soldier.getRankArcherIntervalTicks() - ARCHER_BOW_DRAW_TICKS);
 				}
 				return;
 			}
 
-			if (distanceToTarget < ARCHER_RETREAT_DISTANCE && hasLineOfSight) {
+			if (distanceToTarget < closeReactionDistance && hasLineOfSight) {
 				Vec3 retreatAnchor = soldier.getCombatKiteAnchor(
 						target,
-						ARCHER_COMFORT_DISTANCE,
-						lateralDirection * ARCHER_LATERAL_OFFSET
+						ARCHER_COMFORT_DISTANCE + 0.75D,
+						lateralDirection * (ARCHER_LATERAL_OFFSET + 0.45D)
 				);
-				soldier.getNavigation().moveTo(retreatAnchor.x, retreatAnchor.y, retreatAnchor.z, speedModifier);
+				soldier.getNavigation().moveTo(
+						retreatAnchor.x,
+						retreatAnchor.y,
+						retreatAnchor.z,
+						speedModifier * 1.10D
+				);
 				repositionCooldown = ARCHER_REPOSITION_INTERVAL_TICKS;
 			} else if (distanceToTargetSqr > attackRangeSqr || !hasLineOfSight) {
 				soldier.getNavigation().moveTo(target, speedModifier);
 				repositionCooldown = ARCHER_REPOSITION_INTERVAL_TICKS;
-			} else if (distanceToTarget > ARCHER_COMFORT_DISTANCE + 1.0D) {
-				soldier.getNavigation().moveTo(target, speedModifier * 0.85D);
+			} else if (distanceToTarget > ARCHER_COMFORT_DISTANCE + 0.5D) {
+				soldier.getNavigation().moveTo(target, speedModifier * 0.90D);
 				repositionCooldown = ARCHER_REPOSITION_INTERVAL_TICKS;
 			} else {
 				if (--repositionCooldown <= 0) {
@@ -2848,176 +2751,4 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		}
 	}
 
-	// ─── Seguir dono (FOLLOW) ─────────────────────────────────────────────────
-
-	private static final class FollowOwnerGoal extends Goal {
-		private final CastleSoldierEntity soldier;
-		private final double speedModifier;
-		private final double startDistanceSqr;
-		private final double stopDistanceSqr;
-		private int timeToRecalculatePath;
-		private Vec3 roamAnchor;
-		private int roamRecalculateTicks;
-		private int roamRestTicks;
-
-		private FollowOwnerGoal(CastleSoldierEntity soldier, double speedModifier, double startDistance, double stopDistance) {
-			this.soldier = soldier;
-			this.speedModifier = speedModifier;
-			this.startDistanceSqr = startDistance * startDistance;
-			this.stopDistanceSqr = stopDistance * stopDistance;
-			this.timeToRecalculatePath = 0;
-			this.roamAnchor = null;
-			this.roamRecalculateTicks = 0;
-			this.roamRestTicks = 0;
-			setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK));
-		}
-
-		@Override
-		public boolean canUse() {
-			Player owner = soldier.getValidOwnerPlayer();
-
-			if (!soldier.isFollowMode() || owner == null) {
-				return false;
-			}
-
-			if (soldier.getTarget() != null) {
-				return false;
-			}
-
-			double distanceToOwnerSqr = soldier.distanceToSqr(owner);
-			return soldier.shouldRoamAroundStoppedOwner(owner)
-					|| distanceToOwnerSqr > startDistanceSqr
-					|| (!soldier.hasOwnerBeenStillLongEnough() && distanceToOwnerSqr > stopDistanceSqr);
-		}
-
-		@Override
-		public boolean canContinueToUse() {
-			Player owner = soldier.getValidOwnerPlayer();
-
-			if (!soldier.isFollowMode() || owner == null) {
-				return false;
-			}
-
-			if (soldier.getTarget() != null) {
-				return false;
-			}
-
-			double distanceToOwnerSqr = soldier.distanceToSqr(owner);
-
-			// Dono voltou a andar: cancela descanso e só continua se precisar seguir.
-			if (!soldier.hasOwnerBeenStillLongEnough()) {
-				roamRestTicks = 0;
-				return distanceToOwnerSqr > stopDistanceSqr;
-			}
-
-			return soldier.shouldRoamAroundStoppedOwner(owner) || distanceToOwnerSqr > stopDistanceSqr;
-		}
-
-		@Override
-		public void start() {
-			timeToRecalculatePath = 0;
-			roamAnchor = null;
-			roamRecalculateTicks = 0;
-			roamRestTicks = 0;
-		}
-
-		@Override
-		public void stop() {
-			roamAnchor = null;
-			roamRecalculateTicks = 0;
-			roamRestTicks = 0;
-			soldier.getNavigation().stop();
-		}
-
-		@Override
-		public void tick() {
-			Player owner = soldier.getValidOwnerPlayer();
-
-			if (owner == null) {
-				return;
-			}
-
-			double distanceToOwnerSqr = soldier.distanceToSqr(owner);
-
-			if (distanceToOwnerSqr >= FOLLOW_REJOIN_DISTANCE_SQR) {
-				rejoinNearOwner(owner);
-				return;
-			}
-
-			soldier.getLookControl().setLookAt(owner, 30.0F, 30.0F);
-
-			if (soldier.shouldRoamAroundStoppedOwner(owner)) {
-				tickRoamAroundOwner(owner);
-				return;
-			}
-
-			// Dono voltou a andar — limpa estado de vagar.
-			roamAnchor = null;
-			roamRecalculateTicks = 0;
-			roamRestTicks = 0;
-
-			if (distanceToOwnerSqr <= stopDistanceSqr) {
-				soldier.getNavigation().stop();
-				return;
-			}
-
-			Vec3 followAnchor = soldier.getFollowAnchor(owner);
-
-			if (--timeToRecalculatePath <= 0) {
-				timeToRecalculatePath = 10;
-				soldier.getNavigation().moveTo(followAnchor.x, followAnchor.y, followAnchor.z, speedModifier);
-			}
-		}
-
-		/**
-		 * Vaga ao redor do dono parado.
-		 * [FASE 4] Usa FOLLOW_ROAM_ARRIVAL_THRESHOLD_SQR (4.0D = 2 blocos) para
-		 * registrar chegada com folga, evitando oscilação no mesmo ponto.
-		 */
-		private void tickRoamAroundOwner(Player owner) {
-			if (!soldier.hasOwnerBeenStillLongEnough()) {
-				roamAnchor = null;
-				roamRestTicks = 0;
-				soldier.getNavigation().stop();
-				return;
-			}
-
-			// Fase de repouso: chegou ao destino, descansa antes de ir ao próximo.
-			if (roamRestTicks > 0) {
-				roamRestTicks--;
-				soldier.getNavigation().stop();
-				return;
-			}
-
-			// [FASE 4] Threshold de chegada ajustado para 2 blocos (era 1.41).
-			if (roamAnchor != null && soldier.position().distanceToSqr(roamAnchor) <= FOLLOW_ROAM_ARRIVAL_THRESHOLD_SQR) {
-				roamRestTicks = FOLLOW_ROAM_REST_MIN_TICKS
-						+ soldier.getRandom().nextInt(FOLLOW_ROAM_REST_MAX_TICKS - FOLLOW_ROAM_REST_MIN_TICKS + 1);
-				soldier.getNavigation().stop();
-				return;
-			}
-
-			boolean needsNewAnchor = roamAnchor == null
-					|| --roamRecalculateTicks <= 0
-					|| soldier.getNavigation().isStuck();
-
-			if (needsNewAnchor) {
-				roamRecalculateTicks = FOLLOW_ROAM_RECALCULATE_TICKS;
-				roamAnchor = soldier.getFollowRoamAnchor(owner);
-				// Velocidade reduzida para parecer mais relaxado.
-				soldier.getNavigation().moveTo(roamAnchor.x, roamAnchor.y, roamAnchor.z, speedModifier * 0.65D);
-			}
-		}
-
-		/** Teleporta o soldado para perto do dono quando a distância é absurda (>24 blocos). */
-		private void rejoinNearOwner(Player owner) {
-			Vec3 followAnchor = soldier.getFollowAnchor(owner);
-
-			soldier.getNavigation().stop();
-			soldier.setPos(followAnchor.x, followAnchor.y, followAnchor.z);
-			soldier.setYRot(owner.getYRot());
-			soldier.setXRot(owner.getXRot());
-			soldier.setDeltaMovement(0.0D, 0.0D, 0.0D);
-		}
-	}
 }
