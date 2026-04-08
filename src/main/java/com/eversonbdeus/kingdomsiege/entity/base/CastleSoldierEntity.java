@@ -12,7 +12,6 @@ import com.eversonbdeus.kingdomsiege.soldier.SoldierRank;
 import com.eversonbdeus.kingdomsiege.soldier.WeaponClass;
 import com.mojang.serialization.Codec;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
-import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.UUIDUtil;
@@ -64,7 +63,6 @@ import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.entity.HumanoidArm;
-import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
@@ -274,6 +272,12 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	// [FASE 6] Identidade persistida — usada agora para rank e XP.
 	private SoldierIdentityData soldierIdentity = SoldierIdentityData.defaultRecruit();
+
+	// [REFATORAÇÃO] Helper de status/UI textual extraído para reduzir o tamanho da entidade.
+	private final CastleSoldierStatus statusView = new CastleSoldierStatus(this);
+
+	// [REFATORAÇÃO] Helper de progressão/rank/XP extraído para reduzir o tamanho da entidade.
+	private final CastleSoldierProgression progressionView = new CastleSoldierProgression(this);
 
 	// ─── Estado interno de navegação/follow ───────────────────────────────────
 
@@ -614,6 +618,11 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	/** [FASE 6] Número de combates em que o soldado sobreviveu (recebeu dano). */
 	public int getBattlesCount() {
 		return soldierIdentity.battlesCount();
+	}
+
+	/** [REFATORAÇÃO] Reseta a flag interna que evita contar a mesma batalha duas vezes. */
+	void clearBattleRegistrationForNextCombat() {
+		battleRegisteredThisCombat = false;
 	}
 
 	// ─── [COMBATE] Parâmetros de combate escalados por rank ─────────────────
@@ -1868,206 +1877,40 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	// ─── Componentes de UI de status ──────────────────────────────────────────
 
-	private Component getArmorTierComponent() {
-		return soldierBlueprint.chestplateStack().isEmpty()
-				? Component.translatable(getArmorTier().getTranslationKey())
-				: soldierBlueprint.chestplateStack().getHoverName();
-	}
-
-	private Component getWeaponClassComponent() {
-		return soldierBlueprint.weaponStack().isEmpty()
-				? Component.translatable(getWeaponClass().getTranslationKey())
-				: soldierBlueprint.weaponStack().getHoverName();
-	}
-
-	private Component getCatalystComponent() {
-		return Component.translatable(getCatalystType().getTranslationKey());
-	}
-
-	private Component getCombatPowerComponent() {
-		if (canUseBowCombat()) {
-			return Component.translatable(
-					"message.kingdomsiege.soldier_status.power_ranged",
-					formatOneDecimal(getEffectiveProjectileBaseDamage())
-			);
-		}
-
-		return Component.translatable(
-				"message.kingdomsiege.soldier_status.power_melee",
-				formatOneDecimal(getAttributeValue(Attributes.ATTACK_DAMAGE))
-		);
-	}
-
-	private List<Component> getInheritedChestplateEnchantmentsComponents() {
-		List<Component> components = new ArrayList<>();
-
-		if (!soldierBlueprint.hasInheritedChestplateEnchantments()) {
-			return components;
-		}
-
-		components.add(Component.translatable("text.kingdomsiege.inheritance.chestplate_header")
-				.withStyle(ChatFormatting.LIGHT_PURPLE));
-
-		appendLevelInheritanceComponent(components, "text.kingdomsiege.inheritance.protection",
-				soldierBlueprint.inheritedProtectionLevel(), ChatFormatting.LIGHT_PURPLE);
-		appendLevelInheritanceComponent(components, "text.kingdomsiege.inheritance.projectile_protection",
-				soldierBlueprint.inheritedProjectileProtectionLevel(), ChatFormatting.LIGHT_PURPLE);
-		appendLevelInheritanceComponent(components, "text.kingdomsiege.inheritance.blast_protection",
-				soldierBlueprint.inheritedBlastProtectionLevel(), ChatFormatting.LIGHT_PURPLE);
-		appendLevelInheritanceComponent(components, "text.kingdomsiege.inheritance.fire_protection",
-				soldierBlueprint.inheritedFireProtectionLevel(), ChatFormatting.LIGHT_PURPLE);
-		appendLevelInheritanceComponent(components, "text.kingdomsiege.inheritance.thorns",
-				soldierBlueprint.inheritedThornsLevel(), ChatFormatting.LIGHT_PURPLE);
-
-		return components;
-	}
-
-	private List<Component> getInheritedWeaponEnchantmentsComponents() {
-		List<Component> components = new ArrayList<>();
-
-		int effectiveSharpnessLevel = getEffectiveInheritedSharpnessLevel();
-		int effectiveFireAspectLevel = getEffectiveInheritedFireAspectLevel();
-		int effectiveKnockbackLevel = getEffectiveInheritedKnockbackLevel();
-		int effectivePowerLevel = getEffectiveInheritedPowerLevel();
-		int effectivePunchLevel = getEffectiveInheritedPunchLevel();
-		int effectiveFlameLevel = getEffectiveInheritedFlameLevel();
-
-		boolean hasAnyInheritance;
-
-		if (canUseBowCombat()) {
-			hasAnyInheritance = effectivePowerLevel > 0
-					|| effectivePunchLevel > 0
-					|| effectiveFlameLevel > 0;
-		} else {
-			hasAnyInheritance = effectiveSharpnessLevel > 0
-					|| effectiveFireAspectLevel > 0
-					|| effectiveKnockbackLevel > 0;
-		}
-
-		if (!hasAnyInheritance) {
-			return components;
-		}
-
-		components.add(Component.translatable("text.kingdomsiege.inheritance.weapon_header")
-				.withStyle(ChatFormatting.GOLD));
-
-		if (canUseBowCombat()) {
-			appendLevelInheritanceComponent(components, "text.kingdomsiege.inheritance.power",
-					effectivePowerLevel, ChatFormatting.GOLD);
-			appendLevelInheritanceComponent(components, "text.kingdomsiege.inheritance.punch",
-					effectivePunchLevel, ChatFormatting.GOLD);
-			appendLevelInheritanceComponent(components, "text.kingdomsiege.inheritance.flame",
-					effectiveFlameLevel, ChatFormatting.GOLD);
-			return components;
-		}
-
-		appendLevelInheritanceComponent(components, "text.kingdomsiege.inheritance.sharpness",
-				effectiveSharpnessLevel, ChatFormatting.GOLD);
-		appendLevelInheritanceComponent(components, "text.kingdomsiege.inheritance.fire_aspect",
-				effectiveFireAspectLevel, ChatFormatting.GOLD);
-		appendLevelInheritanceComponent(components, "text.kingdomsiege.inheritance.knockback",
-				effectiveKnockbackLevel, ChatFormatting.GOLD);
-
-		return components;
-	}
-
-	private void appendLevelInheritanceComponent(
-			List<Component> components,
-			String inheritanceKey,
-			int level,
-			ChatFormatting color
-	) {
-		if (level <= 0) {
-			return;
-		}
-
-		components.add(
-				Component.literal("• ")
-						.append(Component.translatable(inheritanceKey))
-						.append(Component.literal(" " + toRoman(level)))
-						.withStyle(color)
-		);
-	}
-
-	private Component getTerritoryStatusComponent() {
-		if (hasHomePos()) {
-			return Component.translatable(
-					"message.kingdomsiege.soldier_status.territory",
-					homePos.getX(),
-					homePos.getY(),
-					homePos.getZ(),
-					guardRadius
-			);
-		}
-
-		return Component.translatable(
-				"message.kingdomsiege.soldier_status.territory_undefined",
-				guardRadius
-		);
-	}
-
-	private String formatOneDecimal(double value) {
-		return String.format(java.util.Locale.ROOT, "%.1f", value);
-	}
-
-	private String toRoman(int level) {
-		return switch (level) {
-			case 1 -> "I";
-			case 2 -> "II";
-			case 3 -> "III";
-			case 4 -> "IV";
-			case 5 -> "V";
-			default -> Integer.toString(level);
-		};
-	}
-
 	private void sendBasicStatusTo(Player player) {
-		player.sendSystemMessage(Component.translatable(
-				"message.kingdomsiege.soldier_status.header",
-				getSoldierDisplayName(),
-				Component.translatable(getSoldierClass().getTranslationKey()),
-				Component.translatable(getSoldierMode().getTranslationKey())
-		));
+		statusView.sendBasicStatusTo(player);
+	}
 
-		player.sendSystemMessage(Component.translatable(
-				"message.kingdomsiege.soldier_status.combat",
-				getWeaponClassComponent(),
-				getArmorTierComponent(),
-				getCatalystComponent()
-		));
+	boolean canUseBowCombatForStatus() {
+		return canUseBowCombat();
+	}
 
-		player.sendSystemMessage(Component.translatable(
-				"message.kingdomsiege.soldier_status.attributes",
-				Math.round(getHealth()),
-				Math.round(getMaxHealth()),
-				Math.round(getArmorValue()),
-				Math.round(getAttributeValue(Attributes.ARMOR_TOUGHNESS))
-		));
+	double getEffectiveProjectileBaseDamageForStatus() {
+		return getEffectiveProjectileBaseDamage();
+	}
 
-		player.sendSystemMessage(getCombatPowerComponent());
+	int getEffectiveInheritedSharpnessLevelForStatus() {
+		return getEffectiveInheritedSharpnessLevel();
+	}
 
-		player.sendSystemMessage(Component.translatable(
-				"message.kingdomsiege.soldier_status.rank",
-				Component.translatable(getSoldierRank().getTranslationKey()),
-				getMilitaryXp()
-		));
+	int getEffectiveInheritedFireAspectLevelForStatus() {
+		return getEffectiveInheritedFireAspectLevel();
+	}
 
-		// [FASE 6] Linha de histórico: kills e batalhas sobrevividas.
-		player.sendSystemMessage(Component.translatable(
-				"message.kingdomsiege.soldier_status.history",
-				getKillCount(),
-				getBattlesCount()
-		));
+	int getEffectiveInheritedKnockbackLevelForStatus() {
+		return getEffectiveInheritedKnockbackLevel();
+	}
 
-		for (Component line : getInheritedChestplateEnchantmentsComponents()) {
-			player.sendSystemMessage(line);
-		}
+	int getEffectiveInheritedPowerLevelForStatus() {
+		return getEffectiveInheritedPowerLevel();
+	}
 
-		for (Component line : getInheritedWeaponEnchantmentsComponents()) {
-			player.sendSystemMessage(line);
-		}
+	int getEffectiveInheritedPunchLevelForStatus() {
+		return getEffectiveInheritedPunchLevel();
+	}
 
-		player.sendSystemMessage(getTerritoryStatusComponent());
+	int getEffectiveInheritedFlameLevelForStatus() {
+		return getEffectiveInheritedFlameLevel();
 	}
 
 	// ─── [FASE 6] Morte com peso real ───────────────────────────────────────
@@ -2213,50 +2056,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	@Override
 	public boolean killedEntity(ServerLevel level, LivingEntity killedEntity, DamageSource damageSource) {
 		boolean result = super.killedEntity(level, killedEntity, damageSource);
-
-		int xpGain = resolveXpGainFor(killedEntity);
-		if (xpGain <= 0) {
-			return result;
-		}
-
-		SoldierRank rankBefore = getSoldierRank();
-		// [FASE 6] Registra kill e XP; reseta flag de combate para próximo encontro.
-		setSoldierIdentity(soldierIdentity.earnXp(xpGain).withKill());
-		battleRegisteredThisCombat = false;
-		SoldierRank rankAfter = getSoldierRank();
-
-		if (rankAfter.ordinal() > rankBefore.ordinal()) {
-			notifyOwnerOfPromotion(level, rankAfter);
-		}
-
+		progressionView.handleKill(level, killedEntity);
 		return result;
-	}
-
-	private int resolveXpGainFor(LivingEntity killed) {
-		if (killed == null) {
-			return 0;
-		}
-		if (killed instanceof CastleSoldierEntity) {
-			return 0;
-		}
-		if (killed instanceof Player) {
-			return 0;
-		}
-
-		boolean isElite = killed.getMaxHealth() >= 40f || killed.getArmorValue() >= 10;
-		return isElite ? 15 : 5;
-	}
-
-	private void notifyOwnerOfPromotion(ServerLevel level, SoldierRank newRank) {
-		Player owner = getValidOwnerPlayer();
-		if (owner == null) {
-			return;
-		}
-		owner.sendSystemMessage(Component.translatable(
-				"message.kingdomsiege.soldier_rank_up",
-				getSoldierDisplayName(),
-				Component.translatable(newRank.getTranslationKey())
-		));
 	}
 
 	// ─── Ataque ranged (arqueiro) ─────────────────────────────────────────────
