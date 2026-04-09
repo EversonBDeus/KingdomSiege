@@ -1,5 +1,6 @@
 package com.eversonbdeus.kingdomsiege.entity;
 
+
 import com.eversonbdeus.kingdomsiege.registry.ModEntities;
 import com.eversonbdeus.kingdomsiege.soldier.ArmorTier;
 import com.eversonbdeus.kingdomsiege.soldier.CatalystType;
@@ -668,6 +669,40 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		return owner != null && distanceToSqr(owner) <= OWNER_PROTECT_RANGE_SQR;
 	}
 
+	private boolean canEngageThreatInCurrentMode(LivingEntity threat) {
+		if (!isValidCombatTarget(threat)) {
+			return false;
+		}
+
+		if (isGuardMode()) {
+			return !isOutsideGuardChaseLimit(threat);
+		}
+
+		if (!isFollowMode()) {
+			return false;
+		}
+
+		Player owner = getValidOwnerPlayer();
+		if (owner == null) {
+			return false;
+		}
+
+		if (distanceToSqr(owner) > OWNER_PROTECT_RANGE_SQR) {
+			return false;
+		}
+
+		if (threat.distanceToSqr(owner) <= OWNER_PROTECT_RANGE_SQR) {
+			return true;
+		}
+
+		if (threat instanceof Mob hostile) {
+			LivingEntity hostileTarget = hostile.getTarget();
+			return hostileTarget == owner || hostileTarget == this;
+		}
+
+		return false;
+	}
+
 	// ─── Goals ───────────────────────────────────────────────────────────────
 
 	@Override
@@ -1034,7 +1069,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		LivingEntity priorityThreat = findPriorityCombatThreat();
 
-		if (!isValidCombatTarget(priorityThreat)) {
+		if (priorityThreat == null || !canEngageThreatInCurrentMode(priorityThreat)) {
 			return;
 		}
 
@@ -1047,6 +1082,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		if (shouldRetreatFromThreat(priorityThreat)) {
 			retreatTicks = 10;
 			navigateAwayFromThreat(priorityThreat);
+
 			if (level() instanceof ServerLevel serverLevel) {
 				tryCallForAllyHelp(serverLevel);
 			}
@@ -1062,7 +1098,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		List<Mob> nearbyHostiles = serverLevel.getEntitiesOfClass(
 				Mob.class,
 				getBoundingBox().inflate(COMBAT_THREAT_SCAN_RANGE),
-				e -> e instanceof Enemy && isValidCombatTarget(e)
+				e -> e instanceof Enemy && canEngageThreatInCurrentMode(e)
 		);
 
 		if (nearbyHostiles.isEmpty()) {
@@ -1136,12 +1172,12 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 	}
 
 	private boolean shouldSwitchTargetTo(LivingEntity candidate) {
-		if (!isValidCombatTarget(candidate)) {
+		if (!canEngageThreatInCurrentMode(candidate)) {
 			return false;
 		}
 
 		LivingEntity currentTarget = getTarget();
-		if (!isValidCombatTarget(currentTarget)) {
+		if (!canEngageThreatInCurrentMode(currentTarget)) {
 			return true;
 		}
 
@@ -1220,12 +1256,18 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		double retreatDistance = canUseBowCombat() ? ARCHER_COMFORT_DISTANCE + 3.0D : 6.5D;
 		Vec3 retreatAnchor = clampToGuardArea(position().add(awayDirection.scale(retreatDistance)));
 
-		getLookControl().setLookAt(threat, 30.0F, 30.0F);
+		if (canUseBowCombat()) {
+			getLookControl().setLookAt(retreatAnchor.x, retreatAnchor.y, retreatAnchor.z, 25.0F, 25.0F);
+			visualArcherCombatReadyTicks = 0;
+			setVisualArcherCombatReady(false);
+		} else {
+			getLookControl().setLookAt(threat, 30.0F, 30.0F);
+		}
+
 		getNavigation().moveTo(retreatAnchor.x, retreatAnchor.y, retreatAnchor.z, RETREAT_MOVE_SPEED);
 		stopUsingItem();
 		setVisualArcherBowPose(false);
 	}
-
 	private void faceTargetHard(LivingEntity target, float maxTurnDegrees) {
 		if (target == null) {
 			return;
@@ -1286,6 +1328,11 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			return;
 		}
 
+		if (!canEngageThreatInCurrentMode(currentTarget)) {
+			clearCurrentTarget();
+			return;
+		}
+
 		if (!isValidCombatTarget(currentTarget)) {
 			clearCurrentTarget();
 			return;
@@ -1296,7 +1343,6 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			clearCurrentTarget();
 		}
 	}
-
 	private boolean shouldDropCurrentTargetForCombatValidity(LivingEntity target) {
 		boolean hasLineOfSight = getSensing().hasLineOfSight(target);
 
@@ -1573,7 +1619,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			lastNavigationProgressSample = currentPosition;
 		}
 
-		if (stationaryNavigationTicks >= NAVIGATION_REPATH_TICKS) {
+		if (stationaryNavigationTicks == NAVIGATION_REPATH_TICKS && movementAssistCooldown <= 0) {
 			getNavigation().recomputePath();
 		}
 
@@ -1632,8 +1678,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 		return verticalDelta >= NAVIGATION_JUMP_MIN_TARGET_HEIGHT
 				&& verticalDelta <= NAVIGATION_JUMP_MAX_TARGET_HEIGHT
-				&& horizontalTargetDistanceSqr >= NAVIGATION_JUMP_MIN_TARGET_DISTANCE_SQR
-				&& stationaryNavigationTicks >= 2;
+				&& horizontalTargetDistanceSqr >= NAVIGATION_JUMP_MIN_TARGET_DISTANCE_SQR;
 	}
 
 	private boolean shouldTryClimbAssist() {
@@ -1726,13 +1771,15 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	private void clearCurrentTarget() {
 		setTarget(null);
+		stopUsingItem();
+		setAggressive(false);
 		setVisualArcherBowPose(false);
+		visualArcherCombatReadyTicks = 0;
+		setVisualArcherCombatReady(false);
 		resetCombatTargetValidationState();
 		getNavigation().stop();
-		if (!isUsingItem()) {
-			visualArcherCombatReadyTicks = 0;
-			setVisualArcherCombatReady(false);
-		}
+		movementAssistCooldown = 0;
+		resetMovementSupportState();
 	}
 
 	// ─── [FASE 5] Controle de limite de seguidores ───────────────────────────
@@ -2534,6 +2581,23 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			soldier.setVisualArcherBowPose(false);
 			soldier.visualArcherCombatReadyTicks = 0;
 			soldier.setVisualArcherCombatReady(false);
+			soldier.movementAssistCooldown = 0;
+			soldier.resetMovementSupportState();
+		}
+
+		private void setAimReadyVisualState(LivingEntity target, float yawLimit) {
+			soldier.visualArcherCombatReadyTicks = VISUAL_ARCHER_COMBAT_READY_LINGER_TICKS;
+			soldier.setVisualArcherCombatReady(true);
+			soldier.getLookControl().setLookAt(target, yawLimit, yawLimit);
+		}
+
+		private void moveInRetreatRunState(Vec3 retreatAnchor, double speed) {
+			soldier.stopUsingItem();
+			soldier.setVisualArcherBowPose(false);
+			soldier.visualArcherCombatReadyTicks = 0;
+			soldier.setVisualArcherCombatReady(false);
+			soldier.getLookControl().setLookAt(retreatAnchor.x, retreatAnchor.y, retreatAnchor.z, 25.0F, 25.0F);
+			soldier.getNavigation().moveTo(retreatAnchor.x, retreatAnchor.y, retreatAnchor.z, speed);
 		}
 
 		@Override
@@ -2541,12 +2605,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			LivingEntity target = soldier.getTarget();
 
 			if (!soldier.isValidCombatTarget(target)) {
-				soldier.setTarget(null);
-				soldier.stopUsingItem();
-				soldier.getNavigation().stop();
-				soldier.setVisualArcherBowPose(false);
-				soldier.visualArcherCombatReadyTicks = 0;
-				soldier.setVisualArcherCombatReady(false);
+				soldier.clearCurrentTarget();
+				soldier.setAggressive(false);
 				drawTicksRemaining = 0;
 				stableSightTicks = 0;
 				drawCancelGraceTicks = 0;
@@ -2584,40 +2644,29 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 					? ARCHER_CLOSE_STABLE_SIGHT_TICKS
 					: ARCHER_STABLE_SIGHT_TICKS;
 
-			soldier.getLookControl().setLookAt(target, 65.0F, 65.0F);
-
 			// ── 1. RECUPERAÇÃO DE DANO: recua primeiro, atira depois ─────────────────
 			if (soldier.isArcherRecoveringFromHit()) {
 				drawTicksRemaining = 0;
 				stableSightTicks = 0;
 				panicMode = false;
-				soldier.stopUsingItem();
-				soldier.setVisualArcherBowPose(false);
 				Vec3 retreatAnchor = soldier.getDirectRetreatAnchor(target, ARCHER_HIT_RETREAT_DISTANCE);
-				soldier.getNavigation().moveTo(
-						retreatAnchor.x, retreatAnchor.y, retreatAnchor.z, ARCHER_HIT_RETREAT_SPEED);
+				moveInRetreatRunState(retreatAnchor, ARCHER_HIT_RETREAT_SPEED);
 				return;
 			}
 
 			// ── 2. MODO PÂNICO: mob chegou muito perto — draw rápido + tiro imediato ─
-			//    Quando o zombie está em ≤ ARCHER_PANIC_DISTANCE (3.8 blocos), o arqueiro
-			//    usa draw de 4 ticks e cooldown de 8 ticks, enquanto simultaneamente
-			//    tenta recuar para ARCHER_COMFORT_DISTANCE.
 			if (distanceToTarget <= ARCHER_PANIC_DISTANCE) {
 				panicMode = true;
-				soldier.getLookControl().setLookAt(target, 70.0F, 70.0F);
 
 				if (attackCooldown > 0) {
 					attackCooldown--;
-					soldier.setVisualArcherBowPose(false);
-					// Enquanto recarrega em pânico, recua ativamente
 					Vec3 retreatAnchor = soldier.getDirectRetreatAnchor(target, ARCHER_COMFORT_DISTANCE);
-					soldier.getNavigation().moveTo(
-							retreatAnchor.x, retreatAnchor.y, retreatAnchor.z, ARCHER_KITE_SPEED);
+					moveInRetreatRunState(retreatAnchor, ARCHER_KITE_SPEED);
 					return;
 				}
 
-				// Inicia ou avança o draw rápido de emergência
+				setAimReadyVisualState(target, 70.0F);
+
 				if (drawTicksRemaining <= 0) {
 					if (!soldier.isUsingItem()) {
 						soldier.startUsingItem(InteractionHand.MAIN_HAND);
@@ -2625,7 +2674,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 					soldier.setVisualArcherBowPose(true);
 					drawCancelGraceTicks = 0;
 					drawTicksRemaining = ARCHER_PANIC_BOW_DRAW_TICKS;
-					soldier.getNavigation().stop(); // Para momentaneamente para apontar
+					soldier.getNavigation().stop();
 				} else {
 					soldier.setVisualArcherBowPose(true);
 					drawTicksRemaining--;
@@ -2633,10 +2682,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 						soldier.faceTargetHard(target, 45.0F);
 						soldier.performRangedAttack(target, soldier.getRankArcherVelocity());
 						attackCooldown = ARCHER_PANIC_ATTACK_COOLDOWN;
-						// Imediatamente após o tiro, recua
 						Vec3 retreatAnchor = soldier.getDirectRetreatAnchor(target, ARCHER_COMFORT_DISTANCE);
-						soldier.getNavigation().moveTo(
-								retreatAnchor.x, retreatAnchor.y, retreatAnchor.z, ARCHER_KITE_SPEED);
+						moveInRetreatRunState(retreatAnchor, ARCHER_KITE_SPEED);
 					}
 				}
 				return;
@@ -2649,14 +2696,15 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				drawTicksRemaining = 0;
 				stableSightTicks = 0;
 				lateralDirection *= -1;
-				soldier.stopUsingItem();
-				soldier.navigateAwayFromThreat(target);
+				Vec3 retreatAnchor = soldier.getDirectRetreatAnchor(target, ARCHER_COMFORT_DISTANCE + 1.5D);
+				moveInRetreatRunState(retreatAnchor, RETREAT_MOVE_SPEED);
 				attackCooldown = Math.max(attackCooldown, 8);
 				repositionCooldown = ARCHER_REPOSITION_INTERVAL_TICKS;
 				return;
 			}
 
-			// ── 4. CONDIÇÃO DE DRAW ──────────────────────────────────────────────────
+			setAimReadyVisualState(target, 65.0F);
+
 			boolean canBeginDraw = effectiveLos
 					&& distanceToTargetSqr <= attackRangeSqr
 					&& distanceToTarget > minDrawDistance
@@ -2664,8 +2712,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 					&& soldier.isFacingTarget(target, ARCHER_DRAW_FACE_MAX_ANGLE)
 					&& soldier.archerReaimLockTicks <= 0;
 
-			// ── 5. DRAW ATIVO: mantém posição e conta down ───────────────────────────
 			if (drawTicksRemaining > 0) {
+				setAimReadyVisualState(target, 65.0F);
 				soldier.setVisualArcherBowPose(true);
 				soldier.getNavigation().stop();
 
@@ -2692,16 +2740,12 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				return;
 			}
 
-			// ── 6. MOVIMENTAÇÃO TÁTICA ───────────────────────────────────────────────
-			//
-			// Prioridade de tiro sobre movimento: se pode atirar, para e atira.
-			// Só movimenta se não conseguir iniciar o draw.
 			if (attackCooldown > 0) {
 				attackCooldown--;
 			}
 
-			// Se pode disparar, interrompe qualquer movimento e inicia draw
 			if (canBeginDraw && attackCooldown <= 0) {
+				setAimReadyVisualState(target, 65.0F);
 				if (!soldier.isUsingItem()) {
 					soldier.startUsingItem(InteractionHand.MAIN_HAND);
 				}
@@ -2716,26 +2760,23 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				soldier.stopUsingItem();
 			}
 
-			// Recuo ativo: mob está mais perto que a distância de conforto de recuo
 			boolean shouldActivelyRetreat = distanceToTarget < ARCHER_RETREAT_DISTANCE && effectiveLos;
 
 			if (shouldActivelyRetreat) {
-				// Não cancela stableSightTicks completamente — preserva progresso para atirar logo depois
 				stableSightTicks = Math.max(0, stableSightTicks - 1);
 				Vec3 retreatAnchor = soldier.getDirectRetreatAnchor(target, ARCHER_COMFORT_DISTANCE);
-				soldier.getNavigation().moveTo(
-						retreatAnchor.x, retreatAnchor.y, retreatAnchor.z, ARCHER_KITE_SPEED);
+				moveInRetreatRunState(retreatAnchor, ARCHER_KITE_SPEED);
 				repositionCooldown = ARCHER_REPOSITION_INTERVAL_TICKS;
 			} else if (distanceToTargetSqr > attackRangeSqr || !effectiveLos) {
-				// Fora de alcance ou sem visão — aproximar do alvo
+				setAimReadyVisualState(target, 45.0F);
 				soldier.getNavigation().moveTo(target, speedModifier);
 				repositionCooldown = ARCHER_REPOSITION_INTERVAL_TICKS;
 			} else if (distanceToTarget > ARCHER_COMFORT_DISTANCE + 0.5D) {
-				// Um pouco longe demais da distância ideal — aproximar levemente
+				setAimReadyVisualState(target, 45.0F);
 				soldier.getNavigation().moveTo(target, speedModifier * 0.90D);
 				repositionCooldown = ARCHER_REPOSITION_INTERVAL_TICKS;
 			} else {
-				// Zona confortável — kite lateral para não ficar parado
+				setAimReadyVisualState(target, 55.0F);
 				if (--repositionCooldown <= 0) {
 					repositionCooldown = ARCHER_REPOSITION_INTERVAL_TICKS;
 					lateralDirection = soldier.getRandom().nextBoolean() ? 1 : -1;
