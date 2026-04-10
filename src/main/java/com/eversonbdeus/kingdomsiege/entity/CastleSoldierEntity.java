@@ -411,12 +411,25 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		refreshDerivedAttributes();
 	}
 
-	public void initializeFromBlueprint(SoldierBlueprintData blueprint, UUID ownerUuid, BlockPos homePos) {
+	public void initializeFromBlueprint(SoldierBlueprintData blueprint, UUID ownerUuid, BlockPos spawnPos) {
 		applyBlueprint(blueprint);
 		setOwnerUuid(ownerUuid);
-		setHomePos(homePos);
+		clearHomePos();
 		setGuardRadius(DEFAULT_GUARD_RADIUS);
-		setSoldierMode(SoldierMode.GUARD);
+
+		// [AJUSTE] Spawn livre por padrão.
+		// A unidade nasce solta para circular como NPC aliado comum.
+		// O vínculo territorial/homePos fica para quando GUARD for assumido
+		// explicitamente em uma etapa posterior.
+		this.soldierMode = SoldierMode.GUARD;
+		resetCombatTargetValidationState();
+		stopUsingItem();
+		setAggressive(false);
+		setVisualArcherBowPose(false);
+		visualArcherCombatReadyTicks = 0;
+		setVisualArcherCombatReady(false);
+		movementAssistCooldown = 0;
+		resetMovementSupportState();
 	}
 
 	// ─── HomePos ─────────────────────────────────────────────────────────────
@@ -1494,6 +1507,54 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		);
 	}
 
+	private Vec3 resolveGroundedNavigationAnchor(Vec3 desiredPosition, int maxStepUp, int maxStepDown) {
+		BlockPos desiredBlockPos = BlockPos.containing(desiredPosition);
+		int preferredFeetY = Mth.floor(Math.min(getY(), desiredPosition.y));
+		Vec3 fallback = new Vec3(
+				desiredBlockPos.getX() + 0.5D,
+				desiredPosition.y,
+				desiredBlockPos.getZ() + 0.5D
+		);
+
+		for (int searchRadius = 0; searchRadius <= 1; searchRadius++) {
+			for (int offsetX = -searchRadius; offsetX <= searchRadius; offsetX++) {
+				for (int offsetZ = -searchRadius; offsetZ <= searchRadius; offsetZ++) {
+					if (searchRadius > 0
+							&& Math.abs(offsetX) != searchRadius
+							&& Math.abs(offsetZ) != searchRadius) {
+						continue;
+					}
+
+					int columnX = desiredBlockPos.getX() + offsetX;
+					int columnZ = desiredBlockPos.getZ() + offsetZ;
+
+					for (int stepDown = 0; stepDown <= maxStepDown; stepDown++) {
+						BlockPos feetPos = new BlockPos(columnX, preferredFeetY - stepDown, columnZ);
+						if (isWalkableNavigationAnchor(feetPos)) {
+							return Vec3.atBottomCenterOf(feetPos);
+						}
+					}
+
+					for (int stepUp = 1; stepUp <= maxStepUp; stepUp++) {
+						BlockPos feetPos = new BlockPos(columnX, preferredFeetY + stepUp, columnZ);
+						if (isWalkableNavigationAnchor(feetPos)) {
+							return Vec3.atBottomCenterOf(feetPos);
+						}
+					}
+				}
+			}
+		}
+
+		return fallback;
+	}
+
+	private boolean isWalkableNavigationAnchor(BlockPos feetPos) {
+		return level().getBlockState(feetPos.below()).isSolid()
+				&& !level().getBlockState(feetPos).isSolid()
+				&& !level().getBlockState(feetPos.above()).isSolid();
+	}
+
+
 	private Vec3 getCombatKiteAnchor(LivingEntity target, double desiredDistance, double lateralOffset) {
 		Vec3 horizontalAway = position().subtract(target.position());
 		horizontalAway = new Vec3(horizontalAway.x, 0.0D, horizontalAway.z);
@@ -1509,8 +1570,14 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				.add(horizontalAway.scale(desiredDistance))
 				.add(lateral.scale(lateralOffset));
 
-		return clampToGuardArea(desiredPosition);
+		desiredPosition = clampToGuardArea(desiredPosition);
+
+		// [FASE 4] Não aceitar anchor lateral em topo de bloco simples.
+		// Para kite do arqueiro, preferimos manter o mesmo nível ou descer,
+		// evitando que o jump assist empilhe rotação + subida de obstáculo.
+		return resolveGroundedNavigationAnchor(desiredPosition, 0, 3);
 	}
+
 
 	// ─── Posicionamento de FOLLOW ─────────────────────────────────────────────
 
@@ -1535,14 +1602,17 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			double radius = FOLLOW_ROAM_MIN_RADIUS
 					+ getRandom().nextDouble() * (FOLLOW_ROAM_MAX_RADIUS - FOLLOW_ROAM_MIN_RADIUS);
 			Vec3 candidate = ownerPosition.add(Math.cos(angle) * radius, 0.0D, Math.sin(angle) * radius);
+			Vec3 groundedCandidate = resolveGroundedNavigationAnchor(candidate, 1, 4);
 
-			if (candidate.distanceToSqr(position()) > 2.0D) {
-				return candidate;
+			if (groundedCandidate.distanceToSqr(position()) > 2.0D) {
+				return groundedCandidate;
 			}
 		}
 
-		return ownerPosition.add(0.0D, 0.0D, FOLLOW_ROAM_MIN_RADIUS + 0.5D);
+		Vec3 fallback = ownerPosition.add(0.0D, 0.0D, FOLLOW_ROAM_MIN_RADIUS + 0.5D);
+		return resolveGroundedNavigationAnchor(fallback, 1, 4);
 	}
+
 
 	// ─── Estado de movimento do dono ──────────────────────────────────────────
 
@@ -1663,6 +1733,14 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			return false;
 		}
 
+		// [FASE 4] Durante kite / retreat do arqueiro, o pulo assistido tende a
+		// empilhar recálculo de rota + giro + subida no bloco.
+		// Mantemos o assist para outros casos, mas desligamos durante a corrida
+		// tática do arqueiro enquanto ele não estiver parado desenhando o arco.
+		if (canUseBowCombat() && getTarget() != null && !isUsingItem()) {
+			return false;
+		}
+
 		if (!horizontalCollision && !getNavigation().isStuck()) {
 			return false;
 		}
@@ -1680,6 +1758,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				&& verticalDelta <= NAVIGATION_JUMP_MAX_TARGET_HEIGHT
 				&& horizontalTargetDistanceSqr >= NAVIGATION_JUMP_MIN_TARGET_DISTANCE_SQR;
 	}
+
 
 	private boolean shouldTryClimbAssist() {
 		Vec3 navigationTarget = getNavigationTargetCenter();
@@ -1777,7 +1856,16 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		visualArcherCombatReadyTicks = 0;
 		setVisualArcherCombatReady(false);
 		resetCombatTargetValidationState();
-		getNavigation().stop();
+
+		// [AJUSTE] Não travar a locomoção livre ao sair do combate.
+		// Se a unidade estiver em GUARD com homePos fixado, o retorno ao posto
+		// continua podendo assumir a navegação normalmente. No estado livre
+		// (GUARD sem homePos) e no FOLLOW, evitamos o stop bruto que causava
+		// microtravamentos, passos curtos e giro no próprio eixo após matar o alvo.
+		if (isGuardMode() && hasHomePos()) {
+			getNavigation().stop();
+		}
+
 		movementAssistCooldown = 0;
 		resetMovementSupportState();
 	}
@@ -2144,8 +2232,13 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			awayDirection = awayDirection.normalize();
 		}
 
-		return clampToGuardArea(position().add(awayDirection.scale(desiredDistance)));
+		Vec3 desiredPosition = clampToGuardArea(position().add(awayDirection.scale(desiredDistance)));
+
+		// [FASE 4] Retreat do arqueiro não deve escolher topo de bloco simples
+		// como anchor preferencial.
+		return resolveGroundedNavigationAnchor(desiredPosition, 0, 3);
 	}
+
 	// ─── [FASE 6] Regeneração lenta ───────────────────────────────────────────
 
 	private void tickSlowRegeneration() {
@@ -2576,7 +2669,11 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			drawCancelGraceTicks = 0;
 			panicMode = false;
 			soldier.stopUsingItem();
-			soldier.getNavigation().stop();
+
+			if (soldier.isGuardMode() && soldier.hasHomePos()) {
+				soldier.getNavigation().stop();
+			}
+
 			soldier.setAggressive(false);
 			soldier.setVisualArcherBowPose(false);
 			soldier.visualArcherCombatReadyTicks = 0;
@@ -2591,14 +2688,23 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			soldier.getLookControl().setLookAt(target, yawLimit, yawLimit);
 		}
 
+		private void setCombatReadyVisualOnly() {
+			soldier.visualArcherCombatReadyTicks = VISUAL_ARCHER_COMBAT_READY_LINGER_TICKS;
+			soldier.setVisualArcherCombatReady(true);
+		}
+
+
 		private void moveInRetreatRunState(Vec3 retreatAnchor, double speed) {
 			soldier.stopUsingItem();
 			soldier.setVisualArcherBowPose(false);
 			soldier.visualArcherCombatReadyTicks = 0;
 			soldier.setVisualArcherCombatReady(false);
-			soldier.getLookControl().setLookAt(retreatAnchor.x, retreatAnchor.y, retreatAnchor.z, 25.0F, 25.0F);
+
+			// [FASE 4] Durante corrida tática, evitamos lookAt forçado no anchor.
+			// Isso reduz conflito entre rotação e navegação ao encostar em bloco.
 			soldier.getNavigation().moveTo(retreatAnchor.x, retreatAnchor.y, retreatAnchor.z, speed);
 		}
+
 
 		@Override
 		public void tick() {
@@ -2776,7 +2882,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 				soldier.getNavigation().moveTo(target, speedModifier * 0.90D);
 				repositionCooldown = ARCHER_REPOSITION_INTERVAL_TICKS;
 			} else {
-				setAimReadyVisualState(target, 55.0F);
+				setCombatReadyVisualOnly();
 				if (--repositionCooldown <= 0) {
 					repositionCooldown = ARCHER_REPOSITION_INTERVAL_TICKS;
 					lateralDirection = soldier.getRandom().nextBoolean() ? 1 : -1;

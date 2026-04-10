@@ -102,12 +102,12 @@ final class FollowOwnerGoal extends Goal {
 			return;
 		}
 
-		soldier.getLookControl().setLookAt(owner, 30.0F, 30.0F);
-
 		if (soldier.shouldRoamAroundStoppedOwner(owner)) {
 			tickRoamAroundOwner(owner);
 			return;
 		}
+
+		soldier.getLookControl().setLookAt(owner, 30.0F, 30.0F);
 
 		// Dono voltou a andar — limpa estado de vagar.
 		roamAnchor = null;
@@ -126,6 +126,7 @@ final class FollowOwnerGoal extends Goal {
 			soldier.getNavigation().moveTo(followAnchor.x, followAnchor.y, followAnchor.z, speedModifier);
 		}
 	}
+
 
 	/**
 	 * Vaga ao redor do dono parado.
