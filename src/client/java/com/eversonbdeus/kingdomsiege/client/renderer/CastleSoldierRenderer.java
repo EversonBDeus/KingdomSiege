@@ -28,7 +28,7 @@ public class CastleSoldierRenderer extends HumanoidMobRenderer<CastleSoldierEnti
 	public CastleSoldierRenderer(EntityRendererProvider.Context context) {
 		super(context, new CastleSoldierModel(context.bakeLayer(ModEntityModelLayers.CASTLE_SOLDIER)), 0.5F);
 
-		// Camada visual de rank-up estilo Creeper charged.
+		// Camada de efeito visual do rank-up.
 		this.addLayer(new SoldierRankUpLayer(this, context));
 	}
 
@@ -44,43 +44,34 @@ public class CastleSoldierRenderer extends HumanoidMobRenderer<CastleSoldierEnti
 		SoldierClass visualClass = entity.getVisualSoldierClass();
 		state.soldierClass = visualClass;
 
-		// ─── Rank-up: detecta marcador via efeito de resistência exclusivo ──────
-		// CastleSoldierProgression aplica DAMAGE_RESISTANCE com amplificador
-		// SoldierRankUpLayer.RANK_UP_EFFECT_AMPLIFIER (39) ao promover o soldado.
-		// O efeito é sincronizado automaticamente para o cliente pelo Minecraft.
-		MobEffectInstance resistanceEffect = entity.getEffect(MobEffects.RESISTANCE);
-		state.rankUpAnimationActive = resistanceEffect != null
-				&& resistanceEffect.getAmplifier() == SoldierRankUpLayer.RANK_UP_EFFECT_AMPLIFIER;
+		// Copia o estado visual sincronizado do arqueiro para o render state.
+		// Isso evita pose residual entre frames, mas mantém a informação real
+		// que veio da entidade via SynchedEntityData.
+		state.archerCombatReadyActive = entity.isVisualArcherCombatReadyActive();
+		state.archerBowPoseActive = entity.isVisualArcherBowPoseActive();
+
+		// ─── Rank-up: usa estado visual sincronizado como caminho principal ────
+		state.rankUpAnimationActive = entity.isVisualRankUpAnimationActive();
+
+		// Fallback leve:
+		// mantém a leitura do efeito só como apoio de compatibilidade/debug.
+		if (!state.rankUpAnimationActive) {
+			MobEffectInstance resistanceEffect = entity.getEffect(MobEffects.RESISTANCE);
+
+			if (resistanceEffect != null && resistanceEffect.getDuration() > 0) {
+				boolean hasReservedAmplifier =
+						resistanceEffect.getAmplifier() == SoldierRankUpLayer.RANK_UP_EFFECT_AMPLIFIER;
+
+				boolean isLikelyRankUpWindow =
+						resistanceEffect.getDuration() <= 200;
+
+				state.rankUpAnimationActive = hasReservedAmplifier || isLikelyRankUpWindow;
+			}
+		}
 
 		state.rankUpAnimTimeTick = state.rankUpAnimationActive
 				? entity.tickCount + partialTick
 				: 0.0F;
-
-		// ─── Classe visual ──────────────────────────────────────────────────────
-		if (visualClass == SoldierClass.SWORDSMAN) {
-			state.attackTime = Math.max(state.attackTime, entity.getVisualMeleeSwingProgress(partialTick));
-			return;
-		}
-
-		if (visualClass == SoldierClass.ARCHER) {
-			state.mainArm = entity.getMainArm();
-			state.attackArm = entity.getMainArm();
-
-			state.archerCombatReadyActive = entity.isVisualArcherCombatReadyActive();
-
-			state.archerBowPoseActive =
-					entity.isUsingItem()
-							&& entity.getUsedItemHand() == InteractionHand.MAIN_HAND
-							&& entity.getUseItem().is(Items.BOW);
-
-			state.isUsingItem = entity.isUsingItem();
-			state.useItemHand = entity.isUsingItem() ? entity.getUsedItemHand() : InteractionHand.MAIN_HAND;
-			state.ticksUsingItem = entity.isUsingItem() ? entity.getTicksUsingItem() : 0.0F;
-
-			// Não deixar a pose vanilla disputar com a pose manual do model.
-			state.leftArmPose = HumanoidModel.ArmPose.EMPTY;
-			state.rightArmPose = HumanoidModel.ArmPose.EMPTY;
-		}
 	}
 
 	@Override

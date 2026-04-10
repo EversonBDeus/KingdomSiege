@@ -130,7 +130,8 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 
 	private static final EntityDataAccessor<Integer> DATA_VISUAL_SOLDIER_CLASS =
 			SynchedEntityData.defineId(CastleSoldierEntity.class, EntityDataSerializers.INT);
-
+	private static final EntityDataAccessor<Integer> DATA_VISUAL_RANK_UP_TICKS =
+			SynchedEntityData.defineId(CastleSoldierEntity.class, EntityDataSerializers.INT);
 	// ─── Constantes de GUARD ──────────────────────────────────────────────────
 
 	private static final double GUARD_MOVE_SPEED = 1.0D;
@@ -312,6 +313,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		builder.define(DATA_VISUAL_ARCHER_BOW_POSE, false);
 		builder.define(DATA_VISUAL_ARCHER_COMBAT_READY, false);
 		builder.define(DATA_VISUAL_SOLDIER_CLASS, SoldierClass.SWORDSMAN.ordinal());
+		builder.define(DATA_VISUAL_RANK_UP_TICKS, 0);
 	}
 
 	public float getVisualMeleeSwingProgress(float partialTick) {
@@ -340,10 +342,14 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 			return;
 		}
 
-		int remainingTicks = this.entityData.get(DATA_VISUAL_MELEE_SWING_TICKS);
+		int remainingMeleeTicks = this.entityData.get(DATA_VISUAL_MELEE_SWING_TICKS);
+		if (remainingMeleeTicks > 0) {
+			this.entityData.set(DATA_VISUAL_MELEE_SWING_TICKS, remainingMeleeTicks - 1);
+		}
 
-		if (remainingTicks > 0) {
-			this.entityData.set(DATA_VISUAL_MELEE_SWING_TICKS, remainingTicks - 1);
+		int remainingRankUpTicks = this.entityData.get(DATA_VISUAL_RANK_UP_TICKS);
+		if (remainingRankUpTicks > 0) {
+			this.entityData.set(DATA_VISUAL_RANK_UP_TICKS, remainingRankUpTicks - 1);
 		}
 	}
 
@@ -363,6 +369,13 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		this.entityData.set(DATA_VISUAL_ARCHER_COMBAT_READY, active);
 	}
 
+	public boolean isVisualRankUpAnimationActive() {
+		return this.entityData.get(DATA_VISUAL_RANK_UP_TICKS) > 0;
+	}
+
+	public void triggerVisualRankUpAnimation(int durationTicks) {
+		this.entityData.set(DATA_VISUAL_RANK_UP_TICKS, Math.max(0, durationTicks));
+	}
 	// ─── Atributos estáticos ─────────────────────────────────────────────────
 
 	public static AttributeSupplier.Builder createAttributes() {
@@ -428,6 +441,7 @@ public class CastleSoldierEntity extends PathfinderMob implements RangedAttackMo
 		setVisualArcherBowPose(false);
 		visualArcherCombatReadyTicks = 0;
 		setVisualArcherCombatReady(false);
+		triggerVisualRankUpAnimation(0);
 		movementAssistCooldown = 0;
 		resetMovementSupportState();
 	}

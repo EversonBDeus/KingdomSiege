@@ -1,5 +1,6 @@
 package com.eversonbdeus.kingdomsiege.client.renderer.layer;
 
+import com.eversonbdeus.kingdomsiege.KingdomSiege;
 import com.eversonbdeus.kingdomsiege.client.model.CastleSoldierModel;
 import com.eversonbdeus.kingdomsiege.client.model.CastleSoldierRenderState;
 import com.eversonbdeus.kingdomsiege.client.model.ModEntityModelLayers;
@@ -11,8 +12,9 @@ import net.minecraft.resources.Identifier;
 /**
  * Camada visual de rank-up para espadachins e arqueiros.
  *
- * Usa uma model layer levemente inflada para a aura. Isso evita que o
- * efeito fique colado na malha base do soldado e desapareça visualmente.
+ * Usa uma textura própria compatível com o UV do modelo humanoide do soldado.
+ * Isso evita o problema de usar a textura do creeper charged vanilla em uma
+ * malha que não compartilha o mesmo mapeamento.
  */
 public class SoldierRankUpLayer extends EnergySwirlLayer<CastleSoldierRenderState, CastleSoldierModel> {
 
@@ -22,10 +24,18 @@ public class SoldierRankUpLayer extends EnergySwirlLayer<CastleSoldierRenderStat
     public static final int RANK_UP_EFFECT_AMPLIFIER = 39;
 
     /**
-     * Textura vanilla do Creeper charged.
+     * Textura própria da aura de rank-up, compatível com o modelo humanoide.
      */
     private static final Identifier ENERGY_SWIRL_TEXTURE =
-            Identifier.fromNamespaceAndPath("minecraft", "textures/entity/creeper/creeper_armor.png");
+            Identifier.fromNamespaceAndPath(
+                    KingdomSiege.MOD_ID,
+                    "textures/entity/effect/soldier_rank_up_aura.png"
+            );
+
+    /**
+     * Velocidade do redemoinho visual.
+     */
+    private static final float ENERGY_SWIRL_SPEED = 0.02F;
 
     /**
      * Modelo separado para a aura visual.
@@ -49,7 +59,7 @@ public class SoldierRankUpLayer extends EnergySwirlLayer<CastleSoldierRenderStat
 
     @Override
     protected float xOffset(float tickCount) {
-        return tickCount * 0.01F;
+        return tickCount * ENERGY_SWIRL_SPEED;
     }
 
     @Override
