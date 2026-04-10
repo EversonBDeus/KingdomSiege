@@ -29,7 +29,7 @@ public class CastleSoldierRenderer extends HumanoidMobRenderer<CastleSoldierEnti
 		super(context, new CastleSoldierModel(context.bakeLayer(ModEntityModelLayers.CASTLE_SOLDIER)), 0.5F);
 
 		// Camada visual de rank-up estilo Creeper charged.
-		this.addLayer(new SoldierRankUpLayer(this));
+		this.addLayer(new SoldierRankUpLayer(this, context));
 	}
 
 	@Override
@@ -44,7 +44,10 @@ public class CastleSoldierRenderer extends HumanoidMobRenderer<CastleSoldierEnti
 		SoldierClass visualClass = entity.getVisualSoldierClass();
 		state.soldierClass = visualClass;
 
-		// ─── Rank-up: detecta marcador sincronizado pelo efeito vanilla ─────────
+		// ─── Rank-up: detecta marcador via efeito de resistência exclusivo ──────
+		// CastleSoldierProgression aplica DAMAGE_RESISTANCE com amplificador
+		// SoldierRankUpLayer.RANK_UP_EFFECT_AMPLIFIER (39) ao promover o soldado.
+		// O efeito é sincronizado automaticamente para o cliente pelo Minecraft.
 		MobEffectInstance resistanceEffect = entity.getEffect(MobEffects.RESISTANCE);
 		state.rankUpAnimationActive = resistanceEffect != null
 				&& resistanceEffect.getAmplifier() == SoldierRankUpLayer.RANK_UP_EFFECT_AMPLIFIER;
