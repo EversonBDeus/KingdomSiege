@@ -7,6 +7,7 @@ import net.minecraft.resources.Identifier;
 
 public final class ModEntityModelLayers {
 	public static final ModelLayerLocation CASTLE_SOLDIER = createMain("castle_soldier");
+	public static final ModelLayerLocation CASTLE_SOLDIER_RANK_UP_SWIRL = createMain("castle_soldier_rank_up_swirl");
 
 	private ModEntityModelLayers() {
 	}
@@ -17,5 +18,9 @@ public final class ModEntityModelLayers {
 
 	public static void registerModelLayers() {
 		ModelLayerRegistry.registerModelLayer(CASTLE_SOLDIER, CastleSoldierModel::getTexturedModelData);
+		ModelLayerRegistry.registerModelLayer(
+				CASTLE_SOLDIER_RANK_UP_SWIRL,
+				CastleSoldierModel::getRankUpSwirlTexturedModelData
+		);
 	}
 }

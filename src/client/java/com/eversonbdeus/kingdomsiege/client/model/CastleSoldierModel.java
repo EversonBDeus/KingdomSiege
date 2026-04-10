@@ -11,6 +11,8 @@ import net.minecraft.world.entity.HumanoidArm;
 
 public class CastleSoldierModel extends HumanoidModel<CastleSoldierRenderState> {
 
+	private static final float RANK_UP_SWIRL_INFLATION = 0.25F;
+
 	public CastleSoldierModel(ModelPart root) {
 		super(root);
 		this.hat.visible = false;
@@ -18,6 +20,20 @@ public class CastleSoldierModel extends HumanoidModel<CastleSoldierRenderState> 
 
 	public static LayerDefinition getTexturedModelData() {
 		MeshDefinition meshDefinition = HumanoidModel.createMesh(CubeDeformation.NONE, 0.0F);
+		return LayerDefinition.create(meshDefinition, 64, 64);
+	}
+
+	/**
+	 * Model layer exclusiva da aura de rank-up.
+	 *
+	 * Usa uma leve inflação para evitar sobreposição exata com a malha base
+	 * do soldado. Sem isso, o efeito charged pode ficar imperceptível.
+	 */
+	public static LayerDefinition getRankUpSwirlTexturedModelData() {
+		MeshDefinition meshDefinition = HumanoidModel.createMesh(
+				new CubeDeformation(RANK_UP_SWIRL_INFLATION),
+				0.0F
+		);
 		return LayerDefinition.create(meshDefinition, 64, 64);
 	}
 
